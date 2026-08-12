@@ -1,30 +1,92 @@
 /* Stechoq Hardware Simulation — light engineering UI.
    Squared panels, hairline borders, monospace for anything a device produced. */
 
-:root {
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
   --bg: #f3f5f7;
   --panel: #ffffff;
   --panel-alt: #f8fafb;
   --panel-sunken: #f1f4f6;
   --line: #dde2e8;
   --line-strong: #c6ccd4;
+  --line-hover: #aeb6c0;
   --ink: #13171c;
   --ink-2: #4a525c;
   --ink-3: #78818d;
   --accent: #0f4c81;
+  --accent-hover: #0c3f6c;
+  --accent-active: #0a3459;
   --accent-ink: #ffffff;
+  --accent-mark: #7fe3b6;
   --link: #1263a8;
+  --btn-active: #e9edf1;
   --ok: #0d7a4c;
   --ok-bg: #e8f6ee;
+  --ok-line: #bfe3ce;
   --warn: #96620a;
   --warn-bg: #fdf3e2;
+  --warn-line: #ecd6ab;
   --error: #b3261e;
   --error-bg: #fdeceb;
+  --error-line: #ecc0bd;
+  --danger-line: #e3bdba;
+  --danger-line-hover: #d6a5a1;
   --active: #1263a8;
   --active-bg: #e8f1fa;
+  --active-line: #bcd7ee;
+  --led-off: #cfd6dd;
+  --led-on: #17a55f;
+  --fill-accent: rgba(18, 99, 168, 0.24);
+  --fill-ok: rgba(13, 122, 76, 0.22);
+  --fill-ng: rgba(179, 38, 30, 0.2);
+  --shadow-panel: 0 8px 24px rgba(16, 24, 40, 0.12);
   --radius: 3px;
   --mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
   --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Dark theme. Same layout, same hierarchy — only the palette is restated, so a
+   panel that reads as "raised" in light still reads as raised here. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0e1116;
+  --panel: #161a21;
+  --panel-alt: #1a1f28;
+  --panel-sunken: #10141a;
+  --line: #262d38;
+  --line-strong: #39424f;
+  --line-hover: #4c5766;
+  --ink: #e7ecf3;
+  --ink-2: #aab4c2;
+  --ink-3: #7c8797;
+  --accent: #2f7fd0;
+  --accent-hover: #3d8cdb;
+  --accent-active: #2a71ba;
+  --accent-ink: #ffffff;
+  --accent-mark: #7fe3b6;
+  --link: #6db4f2;
+  --btn-active: #222833;
+  --ok: #52c98d;
+  --ok-bg: #10281e;
+  --ok-line: #24513c;
+  --warn: #dda54a;
+  --warn-bg: #2a2114;
+  --warn-line: #57431f;
+  --error: #f0736a;
+  --error-bg: #2c1918;
+  --error-line: #5c2f2b;
+  --danger-line: #5c2f2b;
+  --danger-line-hover: #7a3d38;
+  --active: #6db4f2;
+  --active-bg: #12243a;
+  --active-line: #29486b;
+  --led-off: #39424f;
+  --led-on: #34d17f;
+  --fill-accent: rgba(109, 180, 242, 0.26);
+  --fill-ok: rgba(82, 201, 141, 0.22);
+  --fill-ng: rgba(240, 115, 106, 0.2);
+  --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 * {
@@ -81,10 +143,13 @@ pre,
   outline-offset: 1px;
 }
 
+/* Full-bleed: the app uses the whole viewport and only pads the edges. Reading
+   width is constrained per-block (.prose, .hero h1) rather than globally, so
+   dashboards fill the screen while prose stays readable. */
 .container {
-  max-width: 1260px;
+  width: 100%;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 clamp(14px, 2.2vw, 40px);
 }
 
 .skip-link {
@@ -139,7 +204,7 @@ pre,
   height: 26px;
   border-radius: var(--radius);
   background: var(--accent);
-  color: #7fe3b6;
+  color: var(--accent-mark);
 }
 
 .brand-sub {
@@ -152,10 +217,17 @@ pre,
   padding-left: 10px;
 }
 
+.masthead-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
 .nav {
   display: flex;
   gap: 4px;
-  margin-left: auto;
   flex-wrap: wrap;
 }
 
@@ -179,6 +251,111 @@ pre,
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+/* ---------- settings menu ---------- */
+
+.settings {
+  position: relative;
+}
+
+/* Sized and coloured exactly like a nav link so the header reads as one row of
+   controls rather than a menu plus a bolted-on button. */
+.settings-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-trigger:hover,
+.settings-trigger[aria-expanded='true'] {
+  background: var(--panel-sunken);
+  color: var(--ink);
+}
+
+.settings-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  width: 236px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
+}
+
+.settings-group {
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+
+.settings-group legend {
+  padding: 0 0 6px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 530;
+  cursor: pointer;
+}
+
+.segmented button:hover {
+  background: var(--panel-sunken);
+  color: var(--ink);
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.lang-code {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.settings-note {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+}
+
 .site-footer {
   border-top: 1px solid var(--line);
   background: var(--panel);
@@ -197,7 +374,7 @@ pre,
 }
 
 main {
-  padding: 28px 0 0;
+  padding: 18px 0 0;
 }
 
 /* ---------- primitives ---------- */
@@ -264,11 +441,11 @@ main {
 
 .btn:hover:not(:disabled) {
   background: var(--panel-sunken);
-  border-color: #aeb6c0;
+  border-color: var(--line-hover);
 }
 
 .btn:active:not(:disabled) {
-  background: #e9edf1;
+  background: var(--btn-active);
 }
 
 .btn:disabled {
@@ -283,22 +460,22 @@ main {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #0c3f6c;
-  border-color: #0c3f6c;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .btn-primary:active:not(:disabled) {
-  background: #0a3459;
+  background: var(--accent-active);
 }
 
 .btn-danger {
   color: var(--error);
-  border-color: #e3bdba;
+  border-color: var(--danger-line);
 }
 
 .btn-danger:hover:not(:disabled) {
   background: var(--error-bg);
-  border-color: #d6a5a1;
+  border-color: var(--danger-line-hover);
 }
 
 .btn-lg {
@@ -359,22 +536,22 @@ main {
 .status.t-ok {
   color: var(--ok);
   background: var(--ok-bg);
-  border-color: #bfe3ce;
+  border-color: var(--ok-line);
 }
 .status.t-active {
   color: var(--active);
   background: var(--active-bg);
-  border-color: #bcd7ee;
+  border-color: var(--active-line);
 }
 .status.t-warn {
   color: var(--warn);
   background: var(--warn-bg);
-  border-color: #ecd6ab;
+  border-color: var(--warn-line);
 }
 .status.t-error {
   color: var(--error);
   background: var(--error-bg);
-  border-color: #ecc0bd;
+  border-color: var(--error-line);
 }
 
 .status.t-active .dot {
@@ -424,7 +601,7 @@ main {
 }
 
 .section {
-  margin: 40px 0;
+  margin: clamp(30px, 3vw, 40px) 0;
 }
 
 .section-head {
@@ -450,22 +627,25 @@ main {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: 40px;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 720px);
+  gap: clamp(28px, 3vw, 56px);
   align-items: center;
-  padding: 44px 0 40px;
+  padding: clamp(4px, 0.8vw, 14px) 0 clamp(24px, 2.4vw, 40px);
 }
 
+/* Scales with the viewport now that the page is full-bleed, but stays within a
+   readable measure instead of running the headline across a whole 27" screen. */
 .hero h1 {
-  font-size: 40px;
+  font-size: clamp(28px, 3.4vw, 58px);
+  max-width: 22ch;
   letter-spacing: -0.03em;
   margin-bottom: 14px;
 }
 
 .hero-lede {
-  font-size: 16px;
+  font-size: clamp(15px, 1vw, 18px);
   color: var(--ink-2);
-  max-width: 52ch;
+  max-width: 62ch;
   margin-bottom: 22px;
 }
 
@@ -482,6 +662,7 @@ main {
   flex-wrap: wrap;
   border-top: 1px solid var(--line);
   padding-top: 16px;
+  max-width: 720px;
 }
 
 .hero-facts div {
@@ -527,8 +708,10 @@ main {
   color: var(--ink-2);
 }
 
+/* Three across on a wide monitor, two on a laptop, one on a phone — without a
+   media query per breakpoint. */
 .reasons {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr));
 }
 
 .reason {
@@ -733,11 +916,11 @@ a.card:hover {
 .device-tab[aria-current='page'] {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
 }
 
 .device-tab[aria-current='page'] .mini-dot {
-  background: #7fe3b6;
+  background: var(--accent-mark);
 }
 
 .mini-dot {
@@ -1063,7 +1246,7 @@ pre.code.inline {
 }
 
 .phase-node.current {
-  color: #fff;
+  color: var(--accent-ink);
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -1127,8 +1310,8 @@ pre.code.inline {
   top: 0;
   bottom: 0;
   background: var(--ok-bg);
-  border-left: 1px dashed #9dcdb2;
-  border-right: 1px dashed #9dcdb2;
+  border-left: 1px dashed var(--ok-line);
+  border-right: 1px dashed var(--ok-line);
 }
 
 .torque-target {
@@ -1154,18 +1337,18 @@ pre.code.inline {
   left: 0;
   bottom: 0;
   top: 0;
-  background: linear-gradient(to right, rgba(18, 99, 168, 0.1), rgba(18, 99, 168, 0.28));
+  background: linear-gradient(to right, transparent, var(--fill-accent));
   border-right: 2px solid var(--active);
   transition: width 80ms linear;
 }
 
 .torque-fill.ok {
-  background: linear-gradient(to right, rgba(13, 122, 76, 0.1), rgba(13, 122, 76, 0.26));
+  background: linear-gradient(to right, transparent, var(--fill-ok));
   border-right-color: var(--ok);
 }
 
 .torque-fill.ng {
-  background: linear-gradient(to right, rgba(179, 38, 30, 0.08), rgba(179, 38, 30, 0.24));
+  background: linear-gradient(to right, transparent, var(--fill-ng));
   border-right-color: var(--error);
 }
 
@@ -1226,7 +1409,7 @@ pre.code.inline {
 }
 
 .io-channel:hover {
-  border-color: #aeb6c0;
+  border-color: var(--line-hover);
   background: var(--panel-alt);
 }
 
@@ -1234,20 +1417,20 @@ pre.code.inline {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: #cfd6dd;
+  background: var(--led-off);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
   flex: none;
 }
 
 .io-channel.on {
   color: var(--ok);
-  border-color: #a9d8bd;
+  border-color: var(--ok-line);
   background: var(--ok-bg);
 }
 
 .io-channel.on .led {
-  background: #17a55f;
-  box-shadow: 0 0 0 2px rgba(23, 165, 95, 0.18);
+  background: var(--led-on);
+  box-shadow: 0 0 0 2px var(--fill-ok);
 }
 
 .io-value {
@@ -1382,9 +1565,16 @@ pre.code.inline {
     flex-wrap: wrap;
     gap: 10px;
   }
-  .nav {
+  .masthead-right {
     margin-left: 0;
     width: 100%;
+    /* The nav wraps to two rows here; keep the burger on the first one instead
+       of letting it float between them. */
+    align-items: flex-start;
+  }
+
+  .nav {
+    flex: 1;
   }
   .brand-sub {
     display: none;

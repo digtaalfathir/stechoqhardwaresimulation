@@ -5,6 +5,7 @@ import type { Config } from '../simulators/core/simulator';
 import type { ConfigField, DeviceStatus, SimEvent, Tone } from '../simulators/core/types';
 import { useSimulator } from '../lib/use-simulator';
 import { href } from '../lib/router';
+import { useT, type Translate } from '../lib/i18n';
 import { Icon } from './icon';
 import { EventStream, PayloadInspector } from './event-stream';
 import { DevicePanel } from './device-panels';
@@ -23,6 +24,7 @@ const STATUS_TONE: Record<DeviceStatus, Tone> = {
  */
 export function Workspace({ sim }: { sim: AnySimulator }) {
   useSimulator(sim);
+  const t = useT();
   const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
 
   // Follows the newest event until the user picks one to pin.
@@ -35,7 +37,7 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
         <div style={{ minWidth: 0 }}>
           <h1>{sim.meta.name}</h1>
           <p className="muted" style={{ fontSize: 13 }}>
-            {sim.meta.tagline}
+            {t(`sim.${sim.meta.id}.tagline`, sim.meta.tagline)}
           </p>
         </div>
         <div className="spacer" style={{ marginLeft: 'auto' }} />
@@ -52,7 +54,7 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
         </div>
       </header>
 
-      <nav className="device-switcher" aria-label="Switch device">
+      <nav className="device-switcher" aria-label={t('ws.switch', 'Switch device')}>
         {simulators.map((s) => (
           <a
             key={s.meta.id}
@@ -66,7 +68,7 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
         ))}
         <a className="device-tab" href={href('/simulators')}>
           <Icon name="grid" size={14} />
-          All simulators
+          {t('ws.all', 'All simulators')}
         </a>
       </nav>
 
@@ -75,7 +77,7 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
       <div className="ws-row controls-state">
         <section className="panel">
           <div className="panel-head">
-            <span className="panel-title">Device Controls</span>
+            <span className="panel-title">{t('ws.controls', 'Device Controls')}</span>
           </div>
           <div className="panel-body controls">
             {sim.actions.map((a) => (
@@ -96,9 +98,11 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
 
         <section className="panel">
           <div className="panel-head">
-            <span className="panel-title">Live Device State</span>
+            <span className="panel-title">{t('ws.state', 'Live Device State')}</span>
             <div className="spacer" />
-            <span className="chip">{sim.events.length} events</span>
+            <span className="chip">
+              {sim.events.length} {t('unit.events', 'events')}
+            </span>
           </div>
           <table className="state-table">
             <tbody>
@@ -133,7 +137,7 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
       </div>
 
       <div className="ws-row">
-        <CommunicationLog events={sim.events} />
+        <CommunicationLog events={sim.events} t={t} />
       </div>
     </>
   );
@@ -141,6 +145,7 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
 
 /** Declarative config form — rendered from the simulator's field schema. */
 function ConfigPanel({ sim }: { sim: AnySimulator }) {
+  const t = useT();
   const [form, setForm] = useState<Config>(() => ({ ...sim.config }));
   const dirty = JSON.stringify(form) !== JSON.stringify(sim.config);
 
@@ -149,9 +154,9 @@ function ConfigPanel({ sim }: { sim: AnySimulator }) {
   return (
     <section className="panel" style={{ marginBottom: 12 }}>
       <div className="panel-head">
-        <span className="panel-title">Device Configuration</span>
+        <span className="panel-title">{t('ws.config', 'Device Configuration')}</span>
         <div className="spacer" />
-        {dirty && <span className="chip t-warn">unapplied changes</span>}
+        {dirty && <span className="chip t-warn">{t('ws.config.dirty', 'unapplied changes')}</span>}
       </div>
       <div className="panel-body">
         <div className="fields">
@@ -166,15 +171,15 @@ function ConfigPanel({ sim }: { sim: AnySimulator }) {
             onClick={() => sim.applyConfig(form)}
             disabled={!dirty && sim.status !== 'OFFLINE'}
           >
-            Apply Configuration
+            {t('ws.config.apply', 'Apply Configuration')}
           </button>
           <button type="button" className="btn" onClick={() => setForm(sim.defaultConfig())}>
-            Restore Defaults
+            {t('ws.config.defaults', 'Restore Defaults')}
           </button>
           <span className="muted" style={{ fontSize: 12.5 }}>
             {sim.status === 'OFFLINE'
-              ? 'Applying configuration brings the device online.'
-              : 'Values are validated by the device before they take effect.'}
+              ? t('ws.config.offline', 'Applying configuration brings the device online.')
+              : t('ws.config.online', 'Values are validated by the device before they take effect.')}
           </span>
         </div>
       </div>
@@ -228,28 +233,33 @@ function Field({
 }
 
 /** Only the events that put something on the wire. */
-function CommunicationLog({ events }: { events: SimEvent[] }) {
+function CommunicationLog({ events, t }: { events: SimEvent[]; t: Translate }) {
   const frames = events.filter((e) => e.transport).slice(0, 40);
   return (
     <section className="panel">
       <div className="panel-head">
-        <span className="panel-title">Communication Log</span>
+        <span className="panel-title">{t('ws.comm', 'Communication Log')}</span>
         <div className="spacer" />
-        <span className="chip">{frames.length} frames</span>
+        <span className="chip">
+          {frames.length} {t('unit.frames', 'frames')}
+        </span>
       </div>
       {frames.length === 0 ? (
         <p className="empty">
-          No traffic yet. Actions that would reach a backend appear here with their protocol.
+          {t(
+            'ws.comm.empty',
+            'No traffic yet. Actions that would reach a backend appear here with their protocol.',
+          )}
         </p>
       ) : (
         <div className="scroll-x">
           <table className="def-table" style={{ border: 0, margin: 0 }}>
             <thead>
               <tr>
-                <th style={{ width: 90 }}>Time</th>
-                <th style={{ width: 120 }}>Protocol</th>
-                <th style={{ width: 90 }}>Direction</th>
-                <th>Frame</th>
+                <th style={{ width: 90 }}>{t('ws.comm.time', 'Time')}</th>
+                <th style={{ width: 120 }}>{t('ws.comm.protocol', 'Protocol')}</th>
+                <th style={{ width: 90 }}>{t('ws.comm.direction', 'Direction')}</th>
+                <th>{t('ws.comm.frame', 'Frame')}</th>
               </tr>
             </thead>
             <tbody>
@@ -266,8 +276,10 @@ function CommunicationLog({ events }: { events: SimEvent[] }) {
         </div>
       )}
       <p className="panel-note">
-        Frames are generated, not sent — nothing leaves the browser. Select an event above to read
-        the full frame.
+        {t(
+          'ws.comm.note',
+          'Frames are generated, not sent — nothing leaves the browser. Select an event above to read the full frame.',
+        )}
       </p>
     </section>
   );

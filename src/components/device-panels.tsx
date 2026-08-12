@@ -1,4 +1,5 @@
 import type { AnySimulator } from '../simulators/registry';
+import { useT } from '../lib/i18n';
 import { NutrunnerSimulator } from '../simulators/nutrunner/nutrunner';
 import { DigitalIoSimulator, type ChannelKind } from '../simulators/digital-io/digital-io';
 
@@ -15,13 +16,10 @@ export function DevicePanel({ sim }: { sim: AnySimulator }) {
   return null;
 }
 
-export function hasDevicePanel(sim: AnySimulator): boolean {
-  return sim instanceof NutrunnerSimulator || sim instanceof DigitalIoSimulator;
-}
-
 // --- nutrunner -------------------------------------------------------------
 
 function NutrunnerPanel({ sim }: { sim: NutrunnerSimulator }) {
+  const t = useT();
   const { phase, torque, angle, curve } = sim.state;
   const unit = sim.cfg('torqueUnit');
   const target = sim.num('targetTorque');
@@ -38,9 +36,11 @@ function NutrunnerPanel({ sim }: { sim: NutrunnerSimulator }) {
   return (
     <section className="panel span-2">
       <div className="panel-head">
-        <span className="panel-title">Tightening Sequence</span>
+        <span className="panel-title">{t('np.title', 'Tightening Sequence')}</span>
         <div className="spacer" />
-        <span className="chip">target {target} {unit}</span>
+        <span className="chip">
+          {t('np.target', 'target')} {target} {unit}
+        </span>
         <span className="chip">± {sim.num('tolerance')}%</span>
       </div>
       <div className="panel-body">
@@ -68,23 +68,23 @@ function NutrunnerPanel({ sim }: { sim: NutrunnerSimulator }) {
 
         <div className="readouts">
           <div className="readout">
-            <span>Torque</span>
+            <span>{t('np.torque', 'Torque')}</span>
             <b>
               {torque.toFixed(1)} <small style={{ fontSize: 12, color: 'var(--ink-3)' }}>{unit}</small>
             </b>
           </div>
           <div className="readout">
-            <span>Angle</span>
+            <span>{t('np.angle', 'Angle')}</span>
             <b>{angle}°</b>
           </div>
           <div className="readout">
-            <span>Phase</span>
+            <span>{t('np.phase', 'Phase')}</span>
             <b className={phase === 'NG' || phase === 'ERROR' ? 't-error' : phase === 'OK' ? 't-ok' : ''}>
               {phase}
             </b>
           </div>
           <div className="readout">
-            <span>Cycle</span>
+            <span>{t('np.cycle', 'Cycle')}</span>
             <b>{sim.state.cycle}</b>
           </div>
         </div>
@@ -93,10 +93,12 @@ function NutrunnerPanel({ sim }: { sim: NutrunnerSimulator }) {
           <div
             className="torque-band"
             style={{ left: pct(target * (1 - tol)), width: pct(target * 2 * tol) }}
-            title={`Accept window ${(target * (1 - tol)).toFixed(1)} – ${(target * (1 + tol)).toFixed(1)} ${unit}`}
+            title={`${t('np.window', 'Accept window')} ${(target * (1 - tol)).toFixed(1)} – ${(target * (1 + tol)).toFixed(1)} ${unit}`}
           />
           <div className="torque-target" style={{ left: pct(target) }}>
-            <span>target {target}</span>
+            <span>
+              {t('np.target', 'target')} {target}
+            </span>
           </div>
           <div className={`torque-fill ${fillTone}`} style={{ width: pct(torque) }} />
           {curve.length > 1 && (
@@ -134,8 +136,10 @@ function NutrunnerPanel({ sim }: { sim: NutrunnerSimulator }) {
         </div>
       </div>
       <p className="panel-note">
-        Green band is the accept window. The trace is the torque ramp of the current cycle; the bar
-        edge is the live reading.
+        {t(
+          'np.note',
+          'Green band is the accept window. The trace is the torque ramp of the current cycle; the bar edge is the live reading.',
+        )}
       </p>
     </section>
   );
@@ -144,22 +148,25 @@ function NutrunnerPanel({ sim }: { sim: NutrunnerSimulator }) {
 // --- digital i/o -----------------------------------------------------------
 
 function DigitalIoPanel({ sim }: { sim: DigitalIoSimulator }) {
+  const t = useT();
   return (
     <section className="panel span-2">
       <div className="panel-head">
-        <span className="panel-title">I/O Channels</span>
+        <span className="panel-title">{t('io.title', 'I/O Channels')}</span>
         <div className="spacer" />
-        <span className="chip">click a channel to toggle it</span>
+        <span className="chip">{t('io.hint', 'click a channel to toggle it')}</span>
       </div>
       <div className="panel-body">
         <div className="io-columns">
-          <ChannelBlock sim={sim} kind="DI" title="Inputs" channels={sim.state.inputs} />
-          <ChannelBlock sim={sim} kind="DO" title="Outputs" channels={sim.state.outputs} />
+          <ChannelBlock sim={sim} kind="DI" title={t('io.inputs', 'Inputs')} channels={sim.state.inputs} />
+          <ChannelBlock sim={sim} kind="DO" title={t('io.outputs', 'Outputs')} channels={sim.state.outputs} />
         </div>
       </div>
       <p className="panel-note">
-        Inputs model field signals (sensors, buttons); outputs model driven loads (valves, lamps).
-        Every transition is logged and framed for the configured transport.
+        {t(
+          'io.note',
+          'Inputs model field signals (sensors, buttons); outputs model driven loads (valves, lamps). Every transition is logged and framed for the configured transport.',
+        )}
       </p>
     </section>
   );
@@ -176,13 +183,14 @@ function ChannelBlock({
   title: string;
   channels: boolean[];
 }) {
+  const t = useT();
   const on = channels.filter(Boolean).length;
   return (
     <div>
       <div className="io-legend">
         <h4>{title}</h4>
         <span className="muted" style={{ fontSize: 12 }}>
-          {on} of {channels.length} ON
+          {on} {t('io.of', 'of')} {channels.length} ON
         </span>
       </div>
       <div className="io-channels">
@@ -195,7 +203,7 @@ function ChannelBlock({
               className={`io-channel${value ? ' on' : ''}`}
               onClick={() => sim.toggle(kind, i)}
               aria-pressed={value}
-              title={`Toggle ${name}`}
+              title={`${t('io.toggle', 'Toggle')} ${name}`}
             >
               <span className="led" />
               {name}

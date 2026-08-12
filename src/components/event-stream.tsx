@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { SimEvent } from '../simulators/core/types';
+import { useT } from '../lib/i18n';
 import { Icon } from './icon';
 import { CopyButton } from './copy-button';
 
@@ -17,6 +18,7 @@ interface StreamProps {
  * device — the simulation keeps running, you just stop the log from moving.
  */
 export function EventStream({ events, selectedSeq, onSelect, onClear }: StreamProps) {
+  const t = useT();
   const [paused, setPaused] = useState(false);
   const [frozen, setFrozen] = useState<SimEvent[]>([]);
   const [filter, setFilter] = useState('');
@@ -45,25 +47,27 @@ export function EventStream({ events, selectedSeq, onSelect, onClear }: StreamPr
   return (
     <section className="panel">
       <div className="panel-head">
-        <span className="panel-title">Event Stream</span>
-        <span className="chip">{events.length} events</span>
-        {paused && <span className="chip t-warn">paused</span>}
+        <span className="panel-title">{t('es.title', 'Event Stream')}</span>
+        <span className="chip">
+          {events.length} {t('unit.events', 'events')}
+        </span>
+        {paused && <span className="chip t-warn">{t('es.paused', 'paused')}</span>}
         <div className="spacer" />
         <div className="stream-toolbar">
           <input
             className="filter-input"
-            placeholder="Filter events"
+            placeholder={t('es.filter', 'Filter events')}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            aria-label="Filter events"
+            aria-label={t('es.filter', 'Filter events')}
           />
           <button className="btn btn-sm" onClick={togglePause} type="button">
             <Icon name={paused ? 'play' : 'pause'} size={13} />
-            {paused ? 'Resume' : 'Pause'}
+            {paused ? t('es.resume', 'Resume') : t('es.pause', 'Pause')}
           </button>
           <button className="btn btn-sm" onClick={onClear} type="button" disabled={!events.length}>
             <Icon name="trash" size={13} />
-            Clear
+            {t('es.clear', 'Clear')}
           </button>
         </div>
       </div>
@@ -71,8 +75,8 @@ export function EventStream({ events, selectedSeq, onSelect, onClear }: StreamPr
       {visible.length === 0 ? (
         <p className="empty">
           {events.length === 0
-            ? 'No events yet. Trigger a device action to produce one.'
-            : 'No events match this filter.'}
+            ? t('es.empty', 'No events yet. Trigger a device action to produce one.')
+            : t('es.nomatch', 'No events match this filter.')}
         </p>
       ) : (
         <div className="stream">
@@ -102,7 +106,7 @@ export function EventStream({ events, selectedSeq, onSelect, onClear }: StreamPr
         </div>
       )}
       <p className="panel-note">
-        Newest first · click a row to inspect it · timestamps are ISO-8601 UTC
+        {t('es.note', 'Newest first · click a row to inspect it · timestamps are ISO-8601 UTC')}
       </p>
     </section>
   );
@@ -131,6 +135,7 @@ interface InspectorProps {
  * Modbus views land later — they are just more frames.
  */
 export function PayloadInspector({ event, fallback }: InspectorProps) {
+  const t = useT();
   const [tab, setTab] = useState<Tab>('payload');
   const active: Tab = tab === 'transport' && !event?.transport ? 'payload' : tab;
 
@@ -146,9 +151,9 @@ export function PayloadInspector({ event, fallback }: InspectorProps) {
   return (
     <section className="panel">
       <div className="panel-head">
-        <span className="panel-title">Payload Inspector</span>
+        <span className="panel-title">{t('pi.title', 'Payload Inspector')}</span>
         <div className="spacer" />
-        <div className="tabs" role="tablist" aria-label="Payload views">
+        <div className="tabs" role="tablist" aria-label={t('pi.views', 'Payload views')}>
           {(
             [
               ['payload', 'Payload'],
@@ -174,11 +179,11 @@ export function PayloadInspector({ event, fallback }: InspectorProps) {
       {event ? (
         <p className="panel-note" style={{ borderTop: 0, borderBottom: '1px solid var(--line)' }}>
           <span className="mono">{event.name}</span> · seq {event.seq} ·{' '}
-          {event.transport ? event.transport.summary : 'no transport frame'}
+          {event.transport ? event.transport.summary : t('pi.notransport', 'no transport frame')}
         </p>
       ) : (
         <p className="panel-note" style={{ borderTop: 0, borderBottom: '1px solid var(--line)' }}>
-          Example payload — run an action to inspect a real one.
+          {t('pi.sample', 'Example payload — run an action to inspect a real one.')}
         </p>
       )}
       <pre className="code">{text}</pre>

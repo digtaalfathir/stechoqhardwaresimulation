@@ -50,11 +50,28 @@ src/
 │   ├── digital-io/      Discrete I/O controller
 │   ├── registry.ts      The one place devices are registered
 │   └── engine.check.ts  npm run check
-├── components/          Workspace, event stream, inspector, device panels
+├── components/          Workspace, event stream, inspector, device panels, settings menu
 ├── pages/               Home, explorer, workspace, docs, about
-├── lib/                 Hash router, React binding
+├── lib/                 Hash router, React binding, settings store, i18n
 └── styles.css
 ```
+
+## Theme and language
+
+The header settings menu carries two controls, both persisted in `localStorage`
+(`shs.settings`) and applied to `<html>` as `data-theme` / `lang`:
+
+- **Theme** — light or dark. Defaults to the OS preference. Every colour is a CSS
+  custom property in [src/styles.css](src/styles.css); the dark theme restates the
+  tokens only, so components never branch on theme.
+- **Language** — English or Indonesian. English lives inline at the call site
+  (`t('nav.home', 'Home')`) and only the Indonesian dictionary is maintained, in
+  [src/lib/i18n.ts](src/lib/i18n.ts). A missing key falls back to English rather than
+  rendering a raw key.
+
+Device-domain vocabulary stays English on purpose — field labels (`Reader ID`,
+`Target Torque`), event names and protocol names are what the real hardware, its
+manual and its protocol spec use.
 
 ## Adding a simulator
 

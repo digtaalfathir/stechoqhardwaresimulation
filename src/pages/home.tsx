@@ -2,99 +2,136 @@ import { CATEGORIES, categoryCounts, plannedSimulators, simulators } from '../si
 import { DeviceCard, PlannedCard } from '../components/device-card';
 import { Icon } from '../components/icon';
 import { href } from '../lib/router';
+import { useT, type Translate } from '../lib/i18n';
 
-const STEPS = [
-  { title: 'Choose a Device', text: 'Select the hardware you want to simulate from the catalog.' },
+const steps = (t: Translate) => [
   {
-    title: 'Configure',
-    text: 'Set device parameters — IP address, reader ID, port, antenna, protocol, torque target.',
+    title: t('step.choose.title', 'Choose a Device'),
+    text: t('step.choose.text', 'Select the hardware you want to simulate from the catalog.'),
   },
-  { title: 'Simulate', text: 'Trigger actions exactly like the real device would perform them.' },
-  { title: 'Inspect', text: 'Watch status, events, payloads, responses and communication logs.' },
+  {
+    title: t('step.configure.title', 'Configure'),
+    text: t(
+      'step.configure.text',
+      'Set device parameters — IP address, reader ID, port, antenna, protocol, torque target.',
+    ),
+  },
+  {
+    title: t('step.simulate.title', 'Simulate'),
+    text: t('step.simulate.text', 'Trigger actions exactly like the real device would perform them.'),
+  },
+  {
+    title: t('step.inspect.title', 'Inspect'),
+    text: t('step.inspect.text', 'Watch status, events, payloads, responses and communication logs.'),
+  },
 ];
 
-const REASONS = [
+const reasons = (t: Translate) => [
   {
     icon: 'bolt',
-    title: 'Hardware is expensive',
-    text: 'A single tightening controller or RFID gate costs more than the software that talks to it. Simulate the interface instead of buying the device.',
+    title: t('reason.expensive.title', 'Hardware is expensive'),
+    text: t(
+      'reason.expensive.text',
+      'A single tightening controller or RFID gate costs more than the software that talks to it. Simulate the interface instead of buying the device.',
+    ),
   },
   {
     icon: 'lock',
-    title: 'Hardware is scarce',
-    text: 'One device, many developers. A simulator gives every engineer their own instance, all day, with no booking sheet.',
+    title: t('reason.scarce.title', 'Hardware is scarce'),
+    text: t(
+      'reason.scarce.text',
+      'One device, many developers. A simulator gives every engineer their own instance, all day, with no booking sheet.',
+    ),
   },
   {
     icon: 'broadcast',
-    title: 'Hardware is hard to share',
-    text: 'Devices live on a plant network behind a firewall. A browser-based simulator travels with the person who needs it.',
+    title: t('reason.share.title', 'Hardware is hard to share'),
+    text: t(
+      'reason.share.text',
+      'Devices live on a plant network behind a firewall. A browser-based simulator travels with the person who needs it.',
+    ),
   },
   {
     icon: 'grid',
-    title: 'Remote testing is painful',
-    text: 'You cannot pull a trigger on a handheld reader over VPN. Here you can, from anywhere.',
+    title: t('reason.remote.title', 'Remote testing is painful'),
+    text: t(
+      'reason.remote.text',
+      'You cannot pull a trigger on a handheld reader over VPN. Here you can, from anywhere.',
+    ),
   },
   {
     icon: 'wrench',
-    title: 'Edge cases barely happen',
-    text: 'An NG fastening, a spindle fault, a tag that never reads — all one click away instead of one lucky shift.',
+    title: t('reason.edge.title', 'Edge cases barely happen'),
+    text: t(
+      'reason.edge.text',
+      'An NG fastening, a spindle fault, a tag that never reads — all one click away instead of one lucky shift.',
+    ),
   },
   {
     icon: 'check',
-    title: 'Integrations need repetition',
-    text: 'Deterministic, repeatable device behaviour is what integration tests and demos actually need.',
+    title: t('reason.repeat.title', 'Integrations need repetition'),
+    text: t(
+      'reason.repeat.text',
+      'Deterministic, repeatable device behaviour is what integration tests and demos actually need.',
+    ),
   },
 ];
 
-const USE_CASES = [
-  'Development',
-  'Integration testing',
-  'Backend development',
-  'Frontend development',
-  'QA',
-  'Demonstration',
-  'Training',
-  'Debugging',
+const useCases = (t: Translate) => [
+  t('use.dev', 'Development'),
+  t('use.integration', 'Integration testing'),
+  t('use.backend', 'Backend development'),
+  t('use.frontend', 'Frontend development'),
+  t('use.qa', 'QA'),
+  t('use.demo', 'Demonstration'),
+  t('use.training', 'Training'),
+  t('use.debug', 'Debugging'),
 ];
 
 export function HomePage() {
+  const t = useT();
   const rfid = simulators[0];
+
   return (
     <div className="container">
       <section className="hero">
         <div>
           <p className="eyebrow">Stechoq Hardware Simulation</p>
-          <h1>Simulate Hardware. Test Integrations. No Hardware Required.</h1>
+          <h1>
+            {t('home.h1', 'Simulate Hardware. Test Integrations. No Hardware Required.')}
+          </h1>
           <p className="hero-lede">
-            Explore virtual industrial devices and reproduce their behavior directly from your
-            browser — device state, device actions and the exact data your backend would receive.
+            {t(
+              'home.lede',
+              'Explore virtual industrial devices and reproduce their behavior directly from your browser — device state, device actions and the exact data your backend would receive.',
+            )}
           </p>
           <div className="hero-actions">
             <a className="btn btn-primary btn-lg" href={href('/simulators')}>
-              Explore Simulators
+              {t('home.cta.explore', 'Explore Simulators')}
               <Icon name="arrow" size={15} />
             </a>
             <a className="btn btn-lg" href={href('/docs')}>
-              How It Works
+              {t('home.cta.how', 'How It Works')}
             </a>
           </div>
           <div className="hero-facts">
             <div>
-              <b>{simulators.length}</b> simulators live
+              <b>{simulators.length}</b> {t('home.fact.live', 'simulators live')}
             </div>
             <div>
-              <b>{plannedSimulators.length}</b> in the catalog
+              <b>{plannedSimulators.length}</b> {t('home.fact.catalog', 'in the catalog')}
             </div>
             <div>
-              <b>0</b> devices to plug in
+              <b>0</b> {t('home.fact.plug', 'devices to plug in')}
             </div>
             <div>
-              <b>100%</b> in-browser
+              <b>100%</b> {t('home.fact.browser', 'in-browser')}
             </div>
           </div>
         </div>
 
-        <aside className="panel" aria-label="Example device output">
+        <aside className="panel" aria-label={t('home.example.aria', 'Example device output')}>
           <div className="panel-head">
             <span className="panel-title">rfid-handheld</span>
             <span className="status t-ok">
@@ -122,7 +159,10 @@ export function HomePage() {
           </table>
           <pre className="code">{JSON.stringify(rfid.samplePayload(), null, 2)}</pre>
           <p className="panel-note">
-            This is the request body your backend would receive from the physical reader.
+            {t(
+              'home.example.note',
+              'This is the request body your backend would receive from the physical reader.',
+            )}
           </p>
         </aside>
       </section>
@@ -130,11 +170,16 @@ export function HomePage() {
       <section className="section">
         <div className="section-head">
           <div>
-            <h2>Simulator Explorer</h2>
-            <p>Devices grouped the way a plant is: by what they identify, drive, see or speak.</p>
+            <h2>{t('home.explorer.title', 'Simulator Explorer')}</h2>
+            <p>
+              {t(
+                'home.explorer.sub',
+                'Devices grouped the way a plant is: by what they identify, drive, see or speak.',
+              )}
+            </p>
           </div>
           <a className="btn btn-sm" href={href('/simulators')} style={{ marginLeft: 'auto' }}>
-            View all
+            {t('home.viewall', 'View all')}
           </a>
         </div>
         <div className="grid cards">
@@ -149,7 +194,7 @@ export function HomePage() {
               <span className="usecase" key={c}>
                 {c}
                 <span>
-                  {live} live / {planned} planned
+                  {live} {t('count.live', 'live')} / {planned} {t('count.planned', 'planned')}
                 </span>
               </span>
             );
@@ -160,14 +205,16 @@ export function HomePage() {
       <section className="section">
         <div className="section-head">
           <div>
-            <h2>How It Works</h2>
-            <p>Choose → Configure → Simulate → Inspect.</p>
+            <h2>{t('home.how.title', 'How It Works')}</h2>
+            <p>{t('home.how.sub', 'Choose → Configure → Simulate → Inspect.')}</p>
           </div>
         </div>
         <div className="grid steps">
-          {STEPS.map((s, i) => (
+          {steps(t).map((s, i) => (
             <div className="step" key={s.title}>
-              <span className="step-index">STEP {String(i + 1).padStart(2, '0')}</span>
+              <span className="step-index">
+                {t('home.step', 'STEP')} {String(i + 1).padStart(2, '0')}
+              </span>
               <h3>{s.title}</h3>
               <p>{s.text}</p>
             </div>
@@ -178,15 +225,17 @@ export function HomePage() {
       <section className="section">
         <div className="section-head">
           <div>
-            <h2>Why Hardware Simulation?</h2>
+            <h2>{t('home.why.title', 'Why Hardware Simulation?')}</h2>
             <p>
-              The hardware is rarely the bottleneck by choice — it is the bottleneck because there
-              is only one of it, it lives somewhere else, and it never fails on demand.
+              {t(
+                'home.why.sub',
+                'The hardware is rarely the bottleneck by choice — it is the bottleneck because there is only one of it, it lives somewhere else, and it never fails on demand.',
+              )}
             </p>
           </div>
         </div>
         <div className="grid reasons">
-          {REASONS.map((r) => (
+          {reasons(t).map((r) => (
             <div className="reason" key={r.title}>
               <span className="icon-slot">
                 <Icon name={r.icon} size={19} />
@@ -203,15 +252,17 @@ export function HomePage() {
       <section className="section">
         <div className="section-head">
           <div>
-            <h2>Built for Engineers</h2>
+            <h2>{t('home.engineers.title', 'Built for Engineers')}</h2>
             <p>
-              A simulator reproduces three things: device state, device actions and device
-              communication. That is enough to build against, test against and demonstrate with.
+              {t(
+                'home.engineers.sub',
+                'A simulator reproduces three things: device state, device actions and device communication. That is enough to build against, test against and demonstrate with.',
+              )}
             </p>
           </div>
         </div>
         <div className="usecases">
-          {USE_CASES.map((u) => (
+          {useCases(t).map((u) => (
             <span className="usecase" key={u}>
               <span>✓</span>
               {u}
@@ -223,11 +274,11 @@ export function HomePage() {
       <section className="section">
         <div className="section-head">
           <div>
-            <h2>Coming Soon</h2>
-            <p>Declared in the catalog and next in line for implementation.</p>
+            <h2>{t('home.soon.title', 'Coming Soon')}</h2>
+            <p>{t('home.soon.sub', 'Declared in the catalog and next in line for implementation.')}</p>
           </div>
           <a className="btn btn-sm" href={href('/simulators')} style={{ marginLeft: 'auto' }}>
-            See the full catalog
+            {t('home.soon.cta', 'See the full catalog')}
           </a>
         </div>
         <div className="grid cards">
