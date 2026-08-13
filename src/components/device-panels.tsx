@@ -1,6 +1,9 @@
 import type { AnySimulator } from '../simulators/registry';
-import { useT } from '../lib/i18n';
+import { useT, type Translate } from '../lib/i18n';
+import type { TransportResponse } from '../simulators/core/types';
+import { Icon } from './icon';
 import { NutrunnerSimulator } from '../simulators/nutrunner/nutrunner';
+import { RfidHandheldSimulator } from '../simulators/rfid/rfid-handheld';
 import { DigitalIoSimulator, type ChannelKind } from '../simulators/digital-io/digital-io';
 
 /**
@@ -11,9 +14,153 @@ import { DigitalIoSimulator, type ChannelKind } from '../simulators/digital-io/d
  * view — a tightening curve, a channel grid. Devices without one render nothing.
  */
 export function DevicePanel({ sim }: { sim: AnySimulator }) {
+  if (sim instanceof RfidHandheldSimulator) return <RfidTagPanel sim={sim} />;
   if (sim instanceof NutrunnerSimulator) return <NutrunnerPanel sim={sim} />;
   if (sim instanceof DigitalIoSimulator) return <DigitalIoPanel sim={sim} />;
   return null;
+}
+
+// --- rfid handheld ---------------------------------------------------------
+
+/**
+ * The tag list lives here rather than in the configuration form: edits take
+ * effect on the next sweep with no Apply step, which is what you want when you
+ * are adding and removing tags between scans.
+ */
+function RfidTagPanel({ sim }: { sim: RfidHandheldSimulator }) {
+  return (
+    <>
+      <SendResult sim={sim} />
+      <TagList sim={sim} />
+    </>
+  );
+}
+
+/** Localised version of the transport's own explanation, with English fallback. */
+function explainError(res: TransportResponse, t: Translate): string {
+  const host = res.host ?? '';
+  switch (res.errorCode) {
+    case 'timeout':
+      return t('send.err.timeout', res.error!).replace('{seconds}', String(res.timeoutSeconds ?? 15));
+    case 'mixed-content':
+      return t('send.err.mixed', res.error!);
+    case 'unreachable':
+      return t('send.err.unreachable', res.error!).replace('{host}', host);
+    default:
+      return res.error!;
+  }
+}
+
+/**
+ * The answer to "did it go through?" — verdict first, then the status line, the
+ * server's own message, and where it went.
+ */
+function SendResult({ sim }: { sim: RfidHandheldSimulator }) {
+  const t = useT();
+  const { sending, lastResponse: res, lastUrl, lastSentAt } = sim.state;
+
+  const verdict = sending
+    ? { tone: 'active', label: t('send.sending', 'SENDING…') }
+    : !res
+      ? { tone: 'neutral', label: t('send.idle', 'NO SEND YET') }
+      : res.ok
+        ? { tone: 'ok', label: t('send.ok', 'DELIVERED') }
+        : { tone: 'error', label: t('send.fail', 'FAILED') };
+
+  return (
+    <section className="panel span-2">
+      <div className="panel-head">
+        <span className="panel-title">{t('send.title', 'Send Result')}</span>
+        <div className="spacer" />
+        <span className="chip t-ok">{sim.state.okCount} {t('send.delivered', 'delivered')}</span>
+        <span className={`chip${sim.state.failCount ? ' t-error' : ''}`}>
+          {sim.state.failCount} {t('send.failed', 'failed')}
+        </span>
+      </div>
+
+      <div className={`send-result tone-${verdict.tone}`}>
+        <div className="send-verdict">
+          <span className={`status t-${verdict.tone}`}>
+            <span className="dot" />
+            {verdict.label}
+          </span>
+          {res && !res.error && (
+            <b className="send-status">
+              {res.status} {res.statusText}
+            </b>
+          )}
+          {res && <span className="send-time">{res.durationMs} ms</span>}
+        </div>
+
+        <div className="send-detail">
+          {!res && !sending && (
+            <p className="muted">
+              {t('send.empty', 'Press Scan Once or Start Scan — the response from your endpoint appears here.')}
+            </p>
+          )}
+          {res?.error && <p className="send-message t-error">{explainError(res, t)}</p>}
+          {res && !res.error && (
+            <p className="send-message">
+              <span className="muted">{t('send.message', 'Response')}: </span>
+              {res.message || t('send.nobody', '(empty body)')}
+            </p>
+          )}
+          {lastUrl && (
+            <p className="send-target mono">
+              POST {lastUrl}
+              {lastSentAt ? ` · ${lastSentAt.slice(11, 23)}Z` : ''}
+            </p>
+          )}
+        </div>
+      </div>
+      <p className="panel-note">
+        {t(
+          'send.note',
+          'This request is really sent from your browser. A failure here is a real one: the endpoint refused it, is unreachable, or does not allow this page (CORS).',
+        )}
+      </p>
+    </section>
+  );
+}
+
+function TagList({ sim }: { sim: RfidHandheldSimulator }) {
+  const t = useT();
+  const tags = sim.tags();
+  return (
+    <section className="panel span-2">
+      <div className="panel-head">
+        <span className="panel-title">{t('rfid.title', 'Tag List')}</span>
+        <span className="chip">
+          {tags.length} {t('unit.tags', 'tags')}
+        </span>
+        <div className="spacer" />
+        <span className="chip t-ok">{t('rfid.live', 'applies instantly')}</span>
+        <button type="button" className="btn btn-sm" onClick={() => sim.addRandomTag()}>
+          <Icon name="bolt" size={13} />
+          {t('rfid.generate', 'Generate Random Tag')}
+        </button>
+      </div>
+      <div className="panel-body">
+        <div className="field">
+          <label htmlFor="rfid-tags">{t('rfid.label', 'Scanned tags — one EPC per line')}</label>
+          <textarea
+            id="rfid-tags"
+            className="mono-input tag-input"
+            spellCheck={false}
+            value={sim.state.tagsText}
+            placeholder={t('rfid.placeholder', 'E280689400004025A987A05A')}
+            onChange={(e) => sim.setTagsText(e.target.value)}
+          />
+        </div>
+      </div>
+      <p className="panel-note">
+        {t(
+          'rfid.note',
+          'Every sweep posts this whole list as the idHex array — one request per sweep, not one per tag. No Apply Configuration needed.',
+        )}
+      </p>
+    </section>
+  );
 }
 
 // --- nutrunner -------------------------------------------------------------

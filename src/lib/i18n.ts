@@ -22,7 +22,7 @@ const ID: Record<string, string> = {
   'nav.about': 'Tentang',
   'footer.tagline':
     'laboratorium perangkat keras virtual untuk menguji integrasi perangkat industri tanpa perangkat fisik.',
-  'footer.note': 'berjalan sepenuhnya di browser Anda · tidak ada lalu lintas perangkat yang keluar dari halaman ini',
+  'footer.note': 'berjalan di browser Anda · request REST dikirim ke endpoint yang Anda konfigurasi',
   'title.simulators': 'Simulator',
   'title.docs': 'Dokumentasi',
   'title.about': 'Tentang',
@@ -126,14 +126,19 @@ const ID: Record<string, string> = {
   'ws.comm.empty':
     'Belum ada lalu lintas. Aksi yang akan menjangkau backend muncul di sini beserta protokolnya.',
   'ws.comm.note':
-    'Frame dihasilkan, bukan dikirim — tidak ada yang keluar dari browser. Pilih event di atas untuk membaca frame lengkapnya.',
+    'Request REST benar-benar dikirim ke endpoint yang Anda konfigurasi; frame TCP, Modbus, dan MQTT hanya dibuat untuk diperiksa. Pilih event di atas untuk membaca frame lengkapnya.',
   'ws.comm.time': 'Waktu',
   'ws.comm.protocol': 'Protokol',
   'ws.comm.direction': 'Arah',
   'ws.comm.frame': 'Frame',
+  'ws.comm.result': 'Hasil',
+  'ws.comm.generated': 'dibuat saja',
+  'ws.comm.blocked': 'diblokir',
   'ws.unknown': 'Simulator tidak dikenal',
   'ws.unknown.body': 'bukan simulator yang aktif. Pilih salah satu berikut:',
   'ws.unknown.browse': 'Jelajahi katalog lengkap',
+  'field.on': 'Aktif',
+  'field.off': 'Nonaktif',
   'unit.events': 'event',
   'unit.frames': 'frame',
 
@@ -174,10 +179,39 @@ const ID: Record<string, string> = {
   'io.note':
     'Input memodelkan sinyal lapangan (sensor, tombol); output memodelkan beban yang digerakkan (katup, lampu). Setiap transisi dicatat dan dibingkai untuk transport yang dikonfigurasi.',
 
+  // --- rfid send result ---
+  'send.title': 'Hasil Pengiriman',
+  'send.sending': 'MENGIRIM…',
+  'send.idle': 'BELUM ADA PENGIRIMAN',
+  'send.ok': 'TERKIRIM',
+  'send.fail': 'GAGAL',
+  'send.delivered': 'terkirim',
+  'send.failed': 'gagal',
+  'send.message': 'Respons',
+  'send.nobody': '(body kosong)',
+  'send.empty': 'Tekan Scan Once atau Start Scan — respons dari endpoint Anda akan muncul di sini.',
+  'send.err.timeout': 'Tidak ada respons dalam {seconds} detik — server tidak menjawab.',
+  'send.err.mixed':
+    'Diblokir: halaman ini disajikan lewat HTTPS sedangkan endpoint-nya HTTP (mixed content). Gunakan endpoint HTTPS, atau jalankan simulator secara lokal lewat HTTP.',
+  'send.err.unreachable':
+    'Tidak dapat menjangkau {host}. Browser memblokir request atau host tidak dapat dihubungi — pastikan server berjalan dan mengirim header CORS (Access-Control-Allow-Origin) untuk halaman ini.',
+  'send.note':
+    'Request ini benar-benar dikirim dari browser Anda. Kegagalan di sini adalah kegagalan sungguhan: endpoint menolak, tidak dapat dijangkau, atau tidak mengizinkan halaman ini (CORS).',
+
+  // --- rfid tag list panel ---
+  'rfid.title': 'Daftar Tag',
+  'rfid.live': 'langsung berlaku',
+  'rfid.generate': 'Buat Tag Acak',
+  'rfid.label': 'Tag hasil pemindaian — satu EPC per baris',
+  'rfid.note':
+    'Setiap sapuan mengirim seluruh daftar ini sebagai array idHex — satu request per sapuan, bukan satu request per tag. Tidak perlu Terapkan Konfigurasi.',
+  'unit.tags': 'tag',
+
   // --- device catalog copy -------------------------------------------------
-  'sim.rfid-handheld.tagline': 'Reader UHF genggam yang mengirim hasil pembacaan tag ke endpoint HTTP.',
+  'sim.rfid-handheld.tagline':
+    'Reader UHF genggam yang benar-benar mengirim satu batch pembacaan tag ke API warehouse Anda.',
   'sim.rfid-handheld.description':
-    'Mensimulasikan reader RFID UHF genggam: pemindaian kontinu atau sekali picu, pemilih antena, dan kumpulan tag. Setiap pembacaan menghasilkan body JSON yang sama seperti yang dikirim reader fisik ke backend Anda.',
+    'Mensimulasikan reader RFID UHF genggam: sapuan sekali picu atau kontinu, masing-masing mengirim seluruh daftar tag dalam satu request ke endpoint yang Anda konfigurasi. Request-nya benar-benar dikirim, sehingga responsnya — status, pesan, dan waktu — memberi tahu apakah backend Anda menerimanya. Daftar tag bisa diubah langsung tanpa menerapkan ulang konfigurasi.',
   'sim.nutrunner.tagline': 'Pengencangan terkendali torsi dengan penilaian OK / NG dan pelaporan hasil.',
   'sim.nutrunner.description':
     'Mensimulasikan spindle pengencang: menjalankan ramp torsi dan sudut menuju target, menilai hasil pengencangan terhadap pita toleransi, lalu melaporkannya seperti kontroler sungguhan — termasuk kasus NG paksa dan gangguan alat yang sulit direproduksi di lini produksi.',
@@ -204,9 +238,9 @@ const ID: Record<string, string> = {
   'docs.title': 'Cara Kerjanya',
   'docs.intro':
     'Stechoq Hardware Simulation adalah laboratorium perangkat keras virtual. Setiap simulator mereproduksi tiga hal dari perangkat fisik: statusnya, aksinya, dan komunikasinya. Antarmuka hanyalah cara Anda mengendalikan dan mengamati simulasi itu — mesin simulasinya sendiri tidak tahu-menahu soal adanya UI.',
-  'docs.callout.title': 'Tidak ada yang keluar dari browser Anda.',
+  'docs.callout.title': 'Mana yang benar-benar dikirim, mana yang hanya dibuat.',
   'docs.callout.text':
-    'Payload dan frame protokol dihasilkan dan ditampilkan secara lokal. Endpoint dan alamat IP yang Anda konfigurasi dipakai untuk menyusun frame yang realistis, bukan untuk membuka koneksi. Transport sungguhan ada di peta jalan.',
+    'RFID handheld mengirim payload-nya sungguhan ke endpoint yang Anda konfigurasi, lalu menampilkan responsnya — status, pesan, dan waktu. Frame TCP, Modbus, dan MQTT hanya dibuat untuk diperiksa, karena browser tidak bisa membuka socket tersebut. Versi sungguhan dari transport itu ada di peta jalan.',
   'docs.use.title': 'Menggunakan simulator',
   'docs.use.1': 'Buka sebuah perangkat dari katalog.',
   'docs.use.2':

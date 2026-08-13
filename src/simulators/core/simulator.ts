@@ -9,7 +9,7 @@ import type {
   TransportFrame,
 } from './types';
 
-export type Config = Record<string, string | number>;
+export type Config = Record<string, string | number | boolean>;
 
 const MAX_EVENTS = 300;
 
@@ -118,6 +118,8 @@ export abstract class Simulator<S extends object = Record<string, never>> {
   applyConfig(patch: Config) {
     this.ensureBooted();
     for (const field of this.configFields) {
+      // Read-only fields are display-only: not even a programmatic patch moves them.
+      if (field.readonly) continue;
       if (!(field.key in patch)) continue;
       const raw = patch[field.key];
       if (field.type === 'number') {
@@ -126,11 +128,15 @@ export abstract class Simulator<S extends object = Record<string, never>> {
         const min = field.min ?? -Infinity;
         const max = field.max ?? Infinity;
         this.config[field.key] = Math.min(max, Math.max(min, n));
-      } else if (field.type === 'select') {
+      } else if (field.type === 'select' || field.type === 'switch') {
+        // A fixed list: anything outside it is rejected, not coerced.
         const v = String(raw);
         if (field.options && !field.options.includes(v)) continue;
         this.config[field.key] = v;
+      } else if (field.type === 'checkbox') {
+        this.config[field.key] = raw === true || raw === 'true';
       } else {
+        // text / textarea / combo — a combo's whole point is free entry.
         this.config[field.key] = String(raw);
       }
     }
@@ -148,6 +154,10 @@ export abstract class Simulator<S extends object = Record<string, never>> {
 
   num(key: string): number {
     return Number(this.config[key] ?? 0);
+  }
+
+  bool(key: string): boolean {
+    return this.config[key] === true;
   }
 
   // --- actions -------------------------------------------------------------

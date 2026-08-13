@@ -53,10 +53,10 @@ export function DocsPage() {
 
         <div className="callout">
           <p>
-            <strong>{t('docs.callout.title', 'Nothing leaves your browser.')}</strong>{' '}
+            <strong>{t('docs.callout.title', 'What is really sent, and what is only generated.')}</strong>{' '}
             {t(
               'docs.callout.text',
-              'Payloads and protocol frames are generated and displayed locally. Endpoints and IP addresses you configure are used to build realistic frames, not to open connections. Live transports are on the roadmap.',
+              'The RFID handheld posts its payload for real to the endpoint you configure, and shows you the response — status, message and timing. TCP, Modbus and MQTT frames are generated for inspection only, because a browser cannot open those sockets. Live versions of those transports are on the roadmap.',
             )}
           </p>
         </div>

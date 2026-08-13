@@ -36,8 +36,10 @@ are needed and deep links survive a hard refresh. There is no backend: the app i
 | Nutrunner / Tightening Tool| `nutrunner`     | Open Protocol, Modbus TCP, REST  |
 | Digital I/O Controller     | `digital-io`    | Modbus TCP, REST, MQTT           |
 
-Protocol frames are **generated and displayed**, not sent. Nothing leaves the browser; configured
-endpoints and IP addresses are used to build realistic frames. Live transports are future work.
+The RFID handheld **really sends** its payload to the configured endpoint and reports the response —
+status, message and timing — so a failure on screen is a real one (rejected, unreachable, or CORS).
+TCP, Modbus and MQTT frames are **generated for inspection only**, because a browser cannot open
+those sockets; live versions are future work.
 
 ## Layout
 

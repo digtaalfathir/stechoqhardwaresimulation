@@ -950,6 +950,12 @@ a.card:hover {
   grid-column: 1 / -1;
 }
 
+/* Grid items default to min-width:auto, which lets a wide child (the frame
+   table) push the panel past the viewport instead of scrolling inside it. */
+.ws-row > * {
+  min-width: 0;
+}
+
 .fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1359,6 +1365,224 @@ pre.code.inline {
   font-size: 11px;
   color: var(--ink-3);
   margin-top: 5px;
+}
+
+/* ---------- config field variants ---------- */
+
+/* Visible so you know the value the device reports, but not yours to change. */
+.field .readonly-input {
+  background: var(--panel-sunken);
+  color: var(--ink-2);
+  border-style: dashed;
+  cursor: default;
+}
+
+/* `.field label` styles the caption above each control; this is a label too, so
+   it needs equal specificity to keep normal-case, input-sized text. */
+.field label.checkfield {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font-size: 13px;
+  font-weight: 520;
+  color: var(--ink);
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.field label.checkfield:hover {
+  background: var(--panel-sunken);
+}
+
+.field label.checkfield input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* A switch field reuses the segmented control from the settings menu. */
+.field .segmented button {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+}
+
+.field textarea.tag-input {
+  min-height: 148px;
+  line-height: 1.65;
+}
+
+/* ---------- combo (type or pick) ---------- */
+
+.combo {
+  position: relative;
+  display: flex;
+}
+
+.combo input {
+  padding-right: 26px;
+}
+
+.combo-toggle {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--panel-alt);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.combo-toggle:hover {
+  background: var(--panel-sunken);
+  color: var(--ink);
+}
+
+.combo-list {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 25;
+  margin: 0;
+  padding: 3px;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 2px;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(340px, 78vw);
+  max-height: 244px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
+}
+
+.combo-list button {
+  width: 100%;
+  text-align: left;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.combo-list button:hover {
+  background: var(--panel-sunken);
+}
+
+.combo-list button[aria-selected='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Controls sit in a row when there is no state table beside them. */
+.controls-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.controls-row .control {
+  min-width: 190px;
+  flex: 1 1 190px;
+}
+
+/* ---------- send result ---------- */
+
+.send-result {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 12px;
+  border-left: 3px solid var(--line-strong);
+}
+
+.send-result.tone-ok {
+  border-left-color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.send-result.tone-error {
+  border-left-color: var(--error);
+  background: var(--error-bg);
+}
+
+.send-result.tone-active {
+  border-left-color: var(--active);
+  background: var(--active-bg);
+}
+
+.send-verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.send-verdict .status {
+  font-size: 13px;
+  padding: 4px 10px;
+  letter-spacing: 0.08em;
+}
+
+.send-status {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.send-time {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.send-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.send-message {
+  font-size: 13.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.send-target {
+  font-size: 12px;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .send-result {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ---------- io grid ---------- */

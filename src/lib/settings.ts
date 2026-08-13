@@ -10,12 +10,11 @@ export interface Settings {
 
 const KEY = 'shs.settings';
 
-function systemTheme(): Theme {
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
+/** Light is the product default; dark is opt-in from the settings menu. */
+const DEFAULTS: Settings = { theme: 'light', lang: 'en' };
 
 function load(): Settings {
-  const fallback: Settings = { theme: systemTheme(), lang: 'en' };
+  const fallback = DEFAULTS;
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return fallback;

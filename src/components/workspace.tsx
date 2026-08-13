@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AnySimulator } from '../simulators/registry';
 import { simulators } from '../simulators/registry';
 import type { Config } from '../simulators/core/simulator';
@@ -30,6 +30,10 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
   // Follows the newest event until the user picks one to pin.
   const selected: SimEvent | null =
     sim.events.find((e) => e.seq === selectedSeq) ?? sim.events[0] ?? null;
+
+  // A device whose values are all shown elsewhere returns no rows; then the
+  // controls take the full width instead of leaving a hole beside them.
+  const rows = sim.stateRows();
 
   return (
     <>
@@ -74,12 +78,24 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
 
       <ConfigPanel key={sim.meta.id} sim={sim} />
 
-      <div className="ws-row controls-state">
+      <div className={`ws-row${rows.length ? ' controls-state' : ''}`}>
         <section className="panel">
           <div className="panel-head">
             <span className="panel-title">{t('ws.controls', 'Device Controls')}</span>
+            {!rows.length && (
+              <>
+                <div className="spacer" />
+                <span className={`status t-${STATUS_TONE[sim.status]}`}>
+                  <span className="dot" />
+                  {sim.status}
+                </span>
+                <span className="chip">
+                  {sim.events.length} {t('unit.events', 'events')}
+                </span>
+              </>
+            )}
           </div>
-          <div className="panel-body controls">
+          <div className={`panel-body controls${rows.length ? '' : ' controls-row'}`}>
             {sim.actions.map((a) => (
               <div className="control" key={a.id}>
                 <button
@@ -96,27 +112,29 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
           </div>
         </section>
 
-        <section className="panel">
-          <div className="panel-head">
-            <span className="panel-title">{t('ws.state', 'Live Device State')}</span>
-            <div className="spacer" />
-            <span className="chip">
-              {sim.events.length} {t('unit.events', 'events')}
-            </span>
-          </div>
-          <table className="state-table">
-            <tbody>
-              {sim.stateRows().map((row) => (
-                <tr key={row.label}>
-                  <th scope="row">{row.label}</th>
-                  <td className={`${row.mono ? 'mono ' : ''}${row.tone ? `t-${row.tone}` : ''}`}>
-                    {row.value}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+        {rows.length > 0 && (
+          <section className="panel">
+            <div className="panel-head">
+              <span className="panel-title">{t('ws.state', 'Live Device State')}</span>
+              <div className="spacer" />
+              <span className="chip">
+                {sim.events.length} {t('unit.events', 'events')}
+              </span>
+            </div>
+            <table className="state-table">
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.label}>
+                    <th scope="row">{row.label}</th>
+                    <td className={`${row.mono ? 'mono ' : ''}${row.tone ? `t-${row.tone}` : ''}`}>
+                      {row.value}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
       </div>
 
       <div className="ws-row">
@@ -149,7 +167,7 @@ function ConfigPanel({ sim }: { sim: AnySimulator }) {
   const [form, setForm] = useState<Config>(() => ({ ...sim.config }));
   const dirty = JSON.stringify(form) !== JSON.stringify(sim.config);
 
-  const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
+  const set = (key: string, value: string | boolean) => setForm((f) => ({ ...f, [key]: value }));
 
   return (
     <section className="panel" style={{ marginBottom: 12 }}>
@@ -195,12 +213,13 @@ function Field({
 }: {
   sim: AnySimulator;
   field: ConfigField;
-  value: string | number | undefined;
-  onChange: (key: string, value: string) => void;
+  value: string | number | boolean | undefined;
+  onChange: (key: string, value: string | boolean) => void;
 }) {
+  const t = useT();
   const id = `${sim.meta.id}-${field.key}`;
   const cls = field.mono ? 'mono-input' : undefined;
-  const v = String(value ?? '');
+  const v = typeof value === 'boolean' ? '' : String(value ?? '');
   return (
     <div className={`field${field.type === 'textarea' ? ' wide' : ''}`}>
       <label htmlFor={id}>{field.label}</label>
@@ -212,8 +231,42 @@ function Field({
             </option>
           ))}
         </select>
+      ) : field.type === 'combo' ? (
+        <ComboInput
+          id={id}
+          className={cls}
+          value={v}
+          options={field.options ?? []}
+          placeholder={field.placeholder}
+          onChange={(next) => onChange(field.key, next)}
+        />
+      ) : field.type === 'switch' ? (
+        <div className="segmented" role="group" aria-label={field.label}>
+          {field.options?.map((o) => (
+            <button
+              key={o}
+              type="button"
+              aria-pressed={v === o}
+              onClick={() => onChange(field.key, o)}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      ) : field.type === 'checkbox' ? (
+        <label className="checkfield">
+          <input
+            id={id}
+            type="checkbox"
+            checked={value === true}
+            onChange={(e) => onChange(field.key, e.target.checked)}
+          />
+          {value === true ? t('field.on', 'Enabled') : t('field.off', 'Disabled')}
+        </label>
       ) : field.type === 'textarea' ? (
         <textarea id={id} className={cls} value={v} onChange={(e) => onChange(field.key, e.target.value)} />
+      ) : field.readonly ? (
+        <input id={id} className={`${cls ?? ''} readonly-input`.trim()} value={v} readOnly tabIndex={-1} />
       ) : (
         <input
           id={id}
@@ -223,6 +276,7 @@ function Field({
           min={field.min}
           max={field.max}
           step={field.step}
+          placeholder={field.placeholder}
           value={v}
           onChange={(e) => onChange(field.key, e.target.value)}
         />
@@ -260,6 +314,7 @@ function CommunicationLog({ events, t }: { events: SimEvent[]; t: Translate }) {
                 <th style={{ width: 120 }}>{t('ws.comm.protocol', 'Protocol')}</th>
                 <th style={{ width: 90 }}>{t('ws.comm.direction', 'Direction')}</th>
                 <th>{t('ws.comm.frame', 'Frame')}</th>
+                <th style={{ width: 150 }}>{t('ws.comm.result', 'Result')}</th>
               </tr>
             </thead>
             <tbody>
@@ -269,6 +324,21 @@ function CommunicationLog({ events, t }: { events: SimEvent[]; t: Translate }) {
                   <td className="mono">{e.transport!.protocol}</td>
                   <td className="mono muted">{e.transport!.direction}</td>
                   <td className="mono">{e.transport!.summary}</td>
+                  <td className="mono">
+                    {e.transport!.response ? (
+                      e.transport!.response.ok ? (
+                        <span className="t-ok">
+                          {e.transport!.response.status} {e.transport!.response.statusText}
+                        </span>
+                      ) : (
+                        <span className="t-error">
+                          {e.transport!.response.status || t('ws.comm.blocked', 'blocked')}
+                        </span>
+                      )
+                    ) : (
+                      <span className="muted">{t('ws.comm.generated', 'generated')}</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -278,9 +348,95 @@ function CommunicationLog({ events, t }: { events: SimEvent[]; t: Translate }) {
       <p className="panel-note">
         {t(
           'ws.comm.note',
-          'Frames are generated, not sent — nothing leaves the browser. Select an event above to read the full frame.',
+          'REST requests are really sent to the endpoint you configured; TCP, Modbus and MQTT frames are generated for inspection only. Select an event above to read the full frame.',
         )}
       </p>
     </section>
+  );
+}
+
+/**
+ * Type anything, or pick from the known list.
+ *
+ * The native `<input list>` hides its options behind a barely-visible affordance,
+ * so the list gets an explicit toggle — the values are the point.
+ */
+function ComboInput({
+  id,
+  value,
+  options,
+  className,
+  placeholder,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  options: string[];
+  className?: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: MouseEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="combo" ref={root}>
+      <input
+        id={id}
+        className={className}
+        value={value}
+        placeholder={placeholder}
+        autoComplete="off"
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {options.length > 0 && (
+        <button
+          type="button"
+          className="combo-toggle"
+          aria-label={t('combo.options', 'Show options')}
+          aria-expanded={open}
+          tabIndex={-1}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <Icon name="caret" size={14} />
+        </button>
+      )}
+      {open && (
+        <ul className="combo-list" role="listbox">
+          {options.map((o) => (
+            <li key={o}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={o === value}
+                onClick={() => {
+                  onChange(o);
+                  setOpen(false);
+                }}
+              >
+                {o}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

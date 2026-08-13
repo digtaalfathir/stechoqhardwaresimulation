@@ -12,18 +12,27 @@ export type Category =
   | 'Factory Devices'
   | 'Communication';
 
-/** Declarative config form. The workspace renders these — simulators never build UI. */
+/**
+ * Declarative config form. The workspace renders these — simulators never build UI.
+ *
+ * `combo` is a select you can also type into (a known list of endpoints, plus
+ * whatever host you actually run); `switch` is a two-way toggle; `checkbox` is a
+ * boolean flag.
+ */
 export interface ConfigField {
   key: string;
   label: string;
-  type: 'text' | 'number' | 'select' | 'textarea';
-  default: string | number;
+  type: 'text' | 'number' | 'select' | 'textarea' | 'combo' | 'switch' | 'checkbox';
+  /** Shown so the value is visible, but never editable and never overwritten. */
+  readonly?: boolean;
+  default: string | number | boolean;
   options?: string[];
   hint?: string;
   min?: number;
   max?: number;
   step?: number;
   mono?: boolean;
+  placeholder?: string;
 }
 
 export interface ActionDef {
@@ -47,11 +56,30 @@ export interface StateRow {
  * What the device would have put on the wire. Kept generic on purpose:
  * REST today, MQTT / TCP / Modbus later without touching the UI.
  */
+/** The outcome of a request that was actually put on the network. */
+export interface TransportResponse {
+  ok: boolean;
+  /** 0 when the request never reached the server (blocked, offline, timeout). */
+  status: number;
+  statusText: string;
+  message: string;
+  durationMs: number;
+  /** Set instead of a status when the browser refused or the host was unreachable. */
+  error?: string;
+  /** Machine-readable cause, so the UI can localise the explanation. */
+  errorCode?: 'timeout' | 'mixed-content' | 'unreachable';
+  host?: string;
+  timeoutSeconds?: number;
+}
+
 export interface TransportFrame {
   protocol: string;
   direction: 'outbound' | 'inbound';
   summary: string;
   detail: string;
+  /** True when this frame was really sent, false/absent when only generated. */
+  live?: boolean;
+  response?: TransportResponse;
 }
 
 export interface SimEvent {

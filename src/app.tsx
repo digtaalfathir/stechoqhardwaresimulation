@@ -104,7 +104,7 @@ export function App() {
             )}
           </span>
           <span className="mono" style={{ fontSize: 11.5 }}>
-            {t('footer.note', 'runs entirely in your browser · no device traffic leaves this page')}
+            {t('footer.note', 'runs in your browser · REST requests go to the endpoint you configure')}
           </span>
         </div>
       </footer>

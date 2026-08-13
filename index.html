@@ -12,16 +12,11 @@
   </head>
   <body>
     <script>
-      // Apply the stored theme before first paint so dark users never see a
-      // white flash. The app re-applies the same value once it boots.
+      // Apply the stored theme before first paint so users who chose dark never
+      // see a white flash. Default is light; the app re-applies on boot.
       try {
         var s = JSON.parse(localStorage.getItem('shs.settings') || '{}');
-        document.documentElement.dataset.theme =
-          s.theme === 'dark' || s.theme === 'light'
-            ? s.theme
-            : matchMedia('(prefers-color-scheme: dark)').matches
-              ? 'dark'
-              : 'light';
+        document.documentElement.dataset.theme = s.theme === 'dark' ? 'dark' : 'light';
         if (s.lang === 'id' || s.lang === 'en') document.documentElement.lang = s.lang;
       } catch (e) {}
     </script>

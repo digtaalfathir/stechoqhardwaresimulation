@@ -1,11 +1,123 @@
-import type { TransportFrame } from './types';
+import type { TransportFrame, TransportResponse } from './types';
 
 /**
- * Builders for the "what would have gone on the wire" view.
- * These render frames only — nothing here opens a socket. Real transports
- * (WebSocket / MQTT / TCP) can be added as further builders without the UI
- * changing, because the workspace just prints TransportFrame.detail.
+ * Transport helpers.
+ *
+ * `postJson` really sends — it is how a device reports to your backend. The
+ * other builders only render the frame a device would have put on the wire
+ * (a browser cannot open a raw TCP or Modbus socket), and the workspace prints
+ * whatever `TransportFrame.detail` contains, so live transports can be added
+ * later without touching the UI.
  */
+
+/**
+ * Posts the body for real and reports what came back.
+ *
+ * Never throws: a blocked, refused or timed-out request is a result too, and the
+ * whole point of the panel above it is to say which one happened.
+ */
+export async function postJson(url: string, body: unknown, timeoutMs = 15000): Promise<TransportResponse> {
+  const started = performance.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    return {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText,
+      message: summarise(text),
+      durationMs: Math.round(performance.now() - started),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      statusText: '',
+      message: '',
+      durationMs: Math.round(performance.now() - started),
+      ...explain(err, url, timeoutMs),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Pull the human-readable part out of a response body. */
+function summarise(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    for (const key of ['message', 'detail', 'error', 'msg', 'status']) {
+      const value = parsed?.[key];
+      if (typeof value === 'string' && value) return value;
+    }
+    return JSON.stringify(parsed);
+  } catch {
+    return trimmed.slice(0, 500);
+  }
+}
+
+/**
+ * `fetch` reports every network-level refusal as the same opaque TypeError, so
+ * name the causes the user can actually act on.
+ */
+function explain(err: unknown, url: string, timeoutMs: number): Partial<TransportResponse> {
+  const host = (() => {
+    try {
+      return new URL(url).host;
+    } catch {
+      return url;
+    }
+  })();
+  const seconds = Math.round(timeoutMs / 1000);
+
+  if (err instanceof DOMException && err.name === 'AbortError') {
+    return {
+      errorCode: 'timeout',
+      host,
+      timeoutSeconds: seconds,
+      error: `No response within ${seconds}s — the server did not answer.`,
+    };
+  }
+  const page = typeof location !== 'undefined' ? location.protocol : 'http:';
+  if (page === 'https:' && url.startsWith('http://')) {
+    return {
+      errorCode: 'mixed-content',
+      host,
+      error:
+        'Blocked: this page is served over HTTPS and the endpoint is HTTP (mixed content). Use an HTTPS endpoint, or run the simulator locally over HTTP.',
+    };
+  }
+  return {
+    errorCode: 'unreachable',
+    host,
+    error: `Could not reach ${host}. The browser blocked the request or the host is unreachable — check that the server is running and that it returns CORS headers (Access-Control-Allow-Origin) for this page.`,
+  };
+}
+
+/** Renders a response the way a client would print it, below the request. */
+export function withResponse(frame: TransportFrame, res: TransportResponse): TransportFrame {
+  const body = res.error
+    ? ['--- no response ---', res.error]
+    : [`HTTP/1.1 ${res.status} ${res.statusText}`.trim(), '', res.message || '(empty body)'];
+  return {
+    ...frame,
+    live: true,
+    response: res,
+    summary: res.error
+      ? `${frame.summary} → failed`
+      : `${frame.summary} → ${res.status} ${res.statusText}`.trim(),
+    detail: [frame.detail, '', ...body, '', `elapsed ${res.durationMs} ms`].join('\n'),
+  };
+}
 
 export function httpPost(url: string, body: unknown): TransportFrame {
   const json = JSON.stringify(body, null, 2);
@@ -25,14 +137,8 @@ export function httpPost(url: string, body: unknown): TransportFrame {
     `Content-Length: ${new TextEncoder().encode(json).length}`,
     '',
     json,
-    '',
-    '--- simulated response ---',
-    'HTTP/1.1 202 Accepted',
-    'Content-Type: application/json',
-    '',
-    '{ "accepted": true }',
   ].join('\n');
-  return { protocol: 'REST', direction: 'outbound', summary: `POST ${url || path} → 202`, detail };
+  return { protocol: 'REST', direction: 'outbound', summary: `POST ${url || path}`, detail };
 }
 
 export function mqttPublish(topic: string, body: unknown): TransportFrame {
