@@ -242,6 +242,19 @@ async function main() {
   assert(framed.summary.includes('422 Unprocessable Entity'), 'a framed response states its status');
   assert(framed.response?.ok === false, 'a framed response keeps its verdict');
 
+  // --- controls report their own condition ---
+  assert(rfid.actionState('start-scan').disabled !== true, 'Start Scan is available while idle');
+  assert(rfid.actionState('start-scan').active !== true, 'Start Scan does not look running while idle');
+  assert(rfid.actionState('stop-scan').disabled === true, 'Stop Scan is dead while idle');
+  rfid.run('start-scan');
+  assert(rfid.actionState('start-scan').active === true, 'Start Scan reads as running while scanning');
+  assert(rfid.actionState('start-scan').disabled === true, 'Start Scan cannot be pressed twice');
+  assert(rfid.actionState('stop-scan').disabled !== true, 'Stop Scan becomes available while scanning');
+  rfid.run('stop-scan');
+  assert(rfid.actionState('start-scan').active !== true, 'Start Scan stops reading as running after Stop');
+  assert(rfid.actionState('stop-scan').disabled === true, 'Stop Scan goes dead again after stopping');
+  await sleep(30);
+
   rfid.run('reset');
   assert(rfid.state.sendCount === 0 && !rfid.state.scanning, 'reset clears device state');
   assert(rfid.state.okCount === 0 && rfid.state.failCount === 0, 'reset clears the delivery counters');
@@ -274,6 +287,12 @@ async function main() {
   nut.run('start-tightening');
   await sleep(1800);
   assert(nut.events.find((e) => e.name === 'TIGHTENING_RESULT')?.transport?.protocol === 'Modbus TCP', 'the protocol setting selects the frame builder');
+
+  nut.run('force-ok');
+  assert(nut.actionState('start-tightening').active === true, 'Start Tightening reads as running mid-cycle');
+  assert(nut.actionState('force-ng').disabled === true, 'a second cycle cannot be started mid-cycle');
+  await sleep(1800);
+  assert(nut.actionState('start-tightening').active !== true, 'the control clears when the cycle ends');
 
   nut.run('trigger-error');
   assert(nut.state.phase === 'ERROR' && nut.status === 'ERROR', 'a tool fault puts the device in ERROR');

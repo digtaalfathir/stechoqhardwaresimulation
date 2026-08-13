@@ -52,7 +52,7 @@ export function App() {
             </span>
             {PRODUCT}
           </a>
-          <span className="brand-sub">{t('brand.sub', 'Virtual hardware laboratory')}</span>
+          <span className="brand-sub">{t('brand.sub', 'Virtual hardware laboratory - BayMax')}</span>
           <div className="masthead-right">
             <nav className="nav" aria-label="Main">
               {NAV.map((item) => {

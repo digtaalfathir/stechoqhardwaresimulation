@@ -1,5 +1,12 @@
 import { Simulator } from '../core/simulator';
-import type { ActionDef, ConfigField, SimulatorMeta, StateRow, TransportFrame } from '../core/types';
+import type {
+  ActionDef,
+  ActionState,
+  ConfigField,
+  SimulatorMeta,
+  StateRow,
+  TransportFrame,
+} from '../core/types';
 import { httpPost, jitter, modbusWrite, round, tcpFrame } from '../core/wire';
 
 export type Phase = 'IDLE' | 'READY' | 'TIGHTENING' | 'OK' | 'NG' | 'ERROR';
@@ -56,12 +63,31 @@ export class NutrunnerSimulator extends Simulator<NutrunnerState> {
   ];
 
   readonly actions: ActionDef[] = [
-    { id: 'start-tightening', label: 'Start Tightening', tone: 'primary', hint: 'Run a normal cycle' },
+    {
+      id: 'start-tightening',
+      label: 'Start Tightening',
+      activeLabel: 'Tightening…',
+      tone: 'primary',
+      hint: 'Run a normal cycle',
+    },
     { id: 'force-ok', label: 'Force OK', hint: 'Cycle that lands inside the tolerance band' },
     { id: 'force-ng', label: 'Force NG', hint: 'Cycle that lands outside the tolerance band' },
     { id: 'trigger-error', label: 'Trigger Error', tone: 'danger', hint: 'Tool fault mid-cycle' },
     { id: 'reset', label: 'Reset', tone: 'danger', hint: 'Clear the fault and return to READY' },
   ];
+
+  actionState(id: string): ActionState {
+    const running = this.state.phase === 'TIGHTENING';
+    switch (id) {
+      case 'start-tightening':
+        return { active: running, disabled: running };
+      case 'force-ok':
+      case 'force-ng':
+        return { disabled: running };
+      default:
+        return {};
+    }
+  }
 
   protected initialState(): NutrunnerState {
     return {

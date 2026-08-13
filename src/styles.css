@@ -478,6 +478,32 @@ main {
   border-color: var(--danger-line-hover);
 }
 
+/* The action the device is running right now: not a call to action and not a
+   dead control, so it is neither solid nor dimmed — it is a live status. */
+.btn-running,
+.btn-running:disabled {
+  background: var(--active-bg);
+  border-color: var(--active-line);
+  color: var(--active);
+  opacity: 1;
+  cursor: default;
+}
+
+.btn-running .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+  animation: blink 1.3s steps(1, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-running .dot {
+    animation: none;
+  }
+}
+
 .btn-lg {
   height: 38px;
   padding: 0 16px;

@@ -1,5 +1,6 @@
 import type {
   ActionDef,
+  ActionState,
   ConfigField,
   DeviceStatus,
   SimEvent,
@@ -67,6 +68,15 @@ export abstract class Simulator<S extends object = Record<string, never>> {
 
   /** Runs one action. Unknown ids are the caller's problem, not the device's. */
   protected abstract onAction(id: string): void;
+
+  /**
+   * Whether a control is currently runnable, and whether it is the thing the
+   * device is busy doing. Devices with no long-running action need not override
+   * it; those that do get buttons that show their own state.
+   */
+  actionState(_id: string): ActionState {
+    return {};
+  }
 
   /** Rows for the "Live Device State" panel. */
   abstract stateRows(): StateRow[];

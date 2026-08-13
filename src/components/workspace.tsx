@@ -96,19 +96,29 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
             )}
           </div>
           <div className={`panel-body controls${rows.length ? '' : ' controls-row'}`}>
-            {sim.actions.map((a) => (
-              <div className="control" key={a.id}>
-                <button
-                  type="button"
-                  className={`btn ${a.tone === 'primary' ? 'btn-primary' : a.tone === 'danger' ? 'btn-danger' : ''}`}
-                  onClick={() => sim.run(a.id)}
-                >
-                  <Icon name={a.tone === 'primary' ? 'bolt' : 'arrow'} size={14} />
-                  {a.label}
-                </button>
-                {a.hint && <span className="hint">{a.hint}</span>}
-              </div>
-            ))}
+            {sim.actions.map((a) => {
+              const { active, disabled } = sim.actionState(a.id);
+              const tone = a.tone === 'primary' ? 'btn-primary' : a.tone === 'danger' ? 'btn-danger' : '';
+              return (
+                <div className="control" key={a.id}>
+                  <button
+                    type="button"
+                    className={`btn ${active ? 'btn-running' : tone}`}
+                    onClick={() => sim.run(a.id)}
+                    disabled={disabled}
+                    aria-busy={active || undefined}
+                  >
+                    {active ? (
+                      <span className="dot" />
+                    ) : (
+                      <Icon name={a.tone === 'primary' ? 'bolt' : 'arrow'} size={14} />
+                    )}
+                    {active && a.activeLabel ? a.activeLabel : a.label}
+                  </button>
+                  {a.hint && <span className="hint">{a.hint}</span>}
+                </div>
+              );
+            })}
           </div>
         </section>
 

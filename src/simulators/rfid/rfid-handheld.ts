@@ -1,5 +1,12 @@
 import { Simulator } from '../core/simulator';
-import type { ActionDef, ConfigField, SimulatorMeta, StateRow, TransportResponse } from '../core/types';
+import type {
+  ActionDef,
+  ActionState,
+  ConfigField,
+  SimulatorMeta,
+  StateRow,
+  TransportResponse,
+} from '../core/types';
 import { httpPost, postJson, randomEpc, withResponse } from '../core/wire';
 
 /** Swapped out by the self-check so it never touches the network. */
@@ -117,11 +124,31 @@ export class RfidHandheldSimulator extends Simulator<RfidState> {
   ];
 
   readonly actions: ActionDef[] = [
-    { id: 'start-scan', label: 'Start Scan', tone: 'primary', hint: 'Send the batch repeatedly at the interval' },
+    {
+      id: 'start-scan',
+      label: 'Start Scan',
+      activeLabel: 'Scanning…',
+      tone: 'primary',
+      hint: 'Send the batch repeatedly at the interval',
+    },
     { id: 'stop-scan', label: 'Stop Scan', hint: 'Halt continuous scanning' },
-    { id: 'scan-once', label: 'Scan Once', hint: 'Send the whole tag list once' },
+    { id: 'scan-once', label: 'Scan Once', activeLabel: 'Sending…', hint: 'Send the whole tag list once' },
     { id: 'reset', label: 'Reset', tone: 'danger', hint: 'Back to a freshly connected reader' },
   ];
+
+  actionState(id: string): ActionState {
+    const { scanning, sending } = this.state;
+    switch (id) {
+      case 'start-scan':
+        return { active: scanning, disabled: scanning };
+      case 'stop-scan':
+        return { disabled: !scanning };
+      case 'scan-once':
+        return { active: sending && !scanning, disabled: scanning || sending };
+      default:
+        return {};
+    }
+  }
 
   private loop: ReturnType<typeof setInterval> | null = null;
   private inFlight = false;

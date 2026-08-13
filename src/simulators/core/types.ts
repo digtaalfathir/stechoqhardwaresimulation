@@ -38,8 +38,18 @@ export interface ConfigField {
 export interface ActionDef {
   id: string;
   label: string;
+  /** Shown instead of `label` while the action is the one currently running. */
+  activeLabel?: string;
   tone?: 'primary' | 'default' | 'danger';
   hint?: string;
+}
+
+/** Runtime condition of one control, so a button can look like what it is. */
+export interface ActionState {
+  /** The action cannot do anything right now. */
+  disabled?: boolean;
+  /** This action is what the device is doing at this moment. */
+  active?: boolean;
 }
 
 export type Tone = 'neutral' | 'ok' | 'warn' | 'error' | 'active';
