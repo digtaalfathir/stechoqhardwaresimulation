@@ -178,9 +178,15 @@ export abstract class Simulator<S extends object = Record<string, never>> {
       this.reset();
       return;
     }
-    // A real device has to be online before it does anything. Connecting
-    // implicitly keeps the first click from being a dead end.
-    if (this.status === 'OFFLINE') this.connect();
+    // Nothing runs before the device is configured and brought online. The UI
+    // locks these controls; this guard covers every other caller.
+    if (this.status === 'OFFLINE') {
+      this.emit('DEVICE_OFFLINE', { device_id: this.deviceId(), action: id }, {
+        tone: 'warn',
+        summary: `Ignored ${id} — apply the configuration first`,
+      });
+      return;
+    }
     this.onAction(id);
     this.notify();
   }

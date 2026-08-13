@@ -86,7 +86,7 @@ export class DigitalIoSimulator extends Simulator<DioState> {
     const key = kind === 'DI' ? 'inputs' : 'outputs';
     const list = this.state[key];
     if (index < 0 || index >= list.length) return;
-    if (this.status === 'OFFLINE') this.connect();
+    if (this.status === 'OFFLINE') return;
     const next = [...list];
     next[index] = !next[index];
     this.setState({ [key]: next } as Partial<DioState>);

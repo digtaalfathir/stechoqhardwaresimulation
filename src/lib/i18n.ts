@@ -120,6 +120,8 @@ const ID: Record<string, string> = {
   'ws.config.defaults': 'Kembalikan Default',
   'ws.config.offline': 'Menerapkan konfigurasi akan membuat perangkat online.',
   'ws.config.online': 'Nilai divalidasi oleh perangkat sebelum diterapkan.',
+  'ws.locked':
+    'Perangkat masih offline. Terapkan konfigurasi di atas untuk membuatnya online — kendali di bawah akan terbuka setelah itu.',
   'ws.controls': 'Kendali Perangkat',
   'ws.state': 'Status Perangkat Langsung',
   'ws.comm': 'Log Komunikasi',

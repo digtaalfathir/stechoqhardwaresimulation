@@ -65,6 +65,23 @@ async function main() {
     assert(s.actions.some((a) => a.id === 'reset'), `${s.meta.id} can be reset`);
   }
 
+  // --- nothing runs before the configuration is applied ---
+  for (const Device of [RfidHandheldSimulator, NutrunnerSimulator, DigitalIoSimulator]) {
+    const fresh = new Device();
+    assert(fresh.status === 'OFFLINE', `${fresh.meta.id} starts offline`);
+    const action = fresh.actions.find((a) => a.id !== 'reset')!;
+    fresh.run(action.id);
+    assert(fresh.status === 'OFFLINE', `${fresh.meta.id} stays offline when an action is attempted`);
+    assert(fresh.events[0].name === 'DEVICE_OFFLINE', `${fresh.meta.id} says why the action was ignored`);
+    assert(fresh.events.length === 1, `${fresh.meta.id} runs nothing else while offline`);
+    fresh.applyConfig({});
+    assert(fresh.status === 'CONNECTED', `${fresh.meta.id} comes online once configured`);
+    fresh.clearTimers();
+  }
+  const offlineDio = new DigitalIoSimulator();
+  offlineDio.toggle('DI', 0);
+  assert(!offlineDio.state.inputs[0], 'an offline I/O channel cannot be toggled from the grid');
+
   // --- config validation is the trust boundary ---
   const rfid = new RfidHandheldSimulator();
   let lastSentTo = '';
@@ -335,6 +352,7 @@ async function main() {
 
   // --- shared engine behaviour ---
   const probe = new DigitalIoSimulator();
+  probe.applyConfig({});
   let notifications = 0;
   const off = probe.subscribe(() => notifications++);
   probe.toggle('DO', 0);

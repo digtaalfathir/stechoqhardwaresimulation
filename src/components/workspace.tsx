@@ -35,6 +35,10 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
   // controls take the full width instead of leaving a hole beside them.
   const rows = sim.stateRows();
 
+  // Until the configuration is applied the device is offline, so everything
+  // below it is inert — a native disabled fieldset locks every control inside.
+  const offline = sim.status === 'OFFLINE';
+
   return (
     <>
       <header className="ws-head">
@@ -78,6 +82,17 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
 
       <ConfigPanel key={sim.meta.id} sim={sim} />
 
+      {offline && (
+        <p className="locked-note">
+          <Icon name="lock" size={14} />
+          {t(
+            'ws.locked',
+            'Device is offline. Apply the configuration above to bring it online — the controls below unlock once you do.',
+          )}
+        </p>
+      )}
+
+      <fieldset className={`ws-locked${offline ? ' is-locked' : ''}`} disabled={offline}>
       <div className={`ws-row${rows.length ? ' controls-state' : ''}`}>
         <section className="panel">
           <div className="panel-head">
@@ -167,6 +182,7 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
       <div className="ws-row">
         <CommunicationLog events={sim.events} t={t} />
       </div>
+      </fieldset>
     </>
   );
 }
