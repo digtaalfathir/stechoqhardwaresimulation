@@ -6,6 +6,7 @@
  */
 import { simulators, getSimulator, plannedSimulators, CATEGORIES } from './registry';
 import { RfidHandheldSimulator } from './rfid/rfid-handheld';
+import { RfidReaderSimulator } from './rfid/rfid-reader';
 import { NutrunnerSimulator } from './nutrunner/nutrunner';
 import { DigitalIoSimulator } from './digital-io/digital-io';
 import { httpPost, randomEpc, withResponse } from './core/wire';
@@ -45,7 +46,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   // --- registry contract ---
-  assert(simulators.length >= 3, 'registry exposes the MVP simulators');
+  assert(simulators.length === 2, 'registry exposes only the two RFID devices for now');
+  assert(
+    simulators.map((s) => s.meta.id).join(',') === 'rfid-handheld,rfid-reader',
+    'the live devices are the handheld and the gate reader',
+  );
+  for (const hidden of ['nutrunner', 'digital-io']) {
+    assert(getSimulator(hidden) === undefined, `${hidden} is not live`);
+    assert(plannedSimulators.some((p) => p.id === hidden), `${hidden} is listed as planned`);
+  }
   assert(new Set(simulators.map((s) => s.meta.id)).size === simulators.length, 'simulator ids are unique');
   const allIds = [...simulators.map((s) => s.meta.id), ...plannedSimulators.map((s) => s.id)];
   assert(new Set(allIds).size === allIds.length, 'catalog ids do not collide with live ids');
@@ -66,7 +75,7 @@ async function main() {
   }
 
   // --- nothing runs before the configuration is applied ---
-  for (const Device of [RfidHandheldSimulator, NutrunnerSimulator, DigitalIoSimulator]) {
+  for (const Device of [RfidHandheldSimulator, RfidReaderSimulator, NutrunnerSimulator, DigitalIoSimulator]) {
     const fresh = new Device();
     assert(fresh.status === 'OFFLINE', `${fresh.meta.id} starts offline`);
     const action = fresh.actions.find((a) => a.id !== 'reset')!;
@@ -277,6 +286,89 @@ async function main() {
   assert(rfid.state.okCount === 0 && rfid.state.failCount === 0, 'reset clears the delivery counters');
   assert(rfid.cfg('maker_name') === 'check', 'reset keeps the applied configuration');
   assert(rfid.events[0].name === 'DEVICE_RESET', 'reset is logged');
+
+  // --- rfid gate reader: partial, overlapping batches ---
+  const gate = new RfidReaderSimulator();
+  const batches: string[][] = [];
+  gate.sender = async (_url, body) => {
+    batches.push([...(body as { id_hex: string[] }).id_hex]);
+    return accepted;
+  };
+  assert(gate.configFields.find((f) => f.key === 'interval')?.default === 7000, 'the gate defaults to a 7s interval');
+  assert(!gate.actions.some((a) => a.id === 'scan-once'), 'the gate has no single-shot action');
+  assert(
+    gate.actions.map((a) => a.id).join(',') === 'start-scan,stop-scan,reset',
+    'the gate offers start, stop and reset only',
+  );
+
+  const gateTags = Array.from({ length: 18 }, (_, i) => `E2806894000040000000${String(i).padStart(4, '0')}`);
+  gate.applyConfig({ baseUrl: 'https://wms.suite.stechoq-j.com', antenna: '4', interval: 500 });
+  gate.setTagsText(gateTags.join('\n'));
+  gate.run('start-scan');
+  await sleep(60);
+
+  assert(batches.length === 1, 'starting the gate publishes immediately');
+  const first = batches[0];
+  assert(first.length > 0, 'the first report carries tags');
+  assert(first.length < gateTags.length, `the first report is partial (got ${first.length}/${gateTags.length})`);
+
+  const firstEvent = gate.events.find((e) => e.name === 'RFID_SENT')!;
+  assert(
+    JSON.stringify(Object.keys(firstEvent.payload)) ===
+      JSON.stringify(['reader_id', 'antenna', 'id_hex', 'timestamp']),
+    'the gate payload carries exactly reader_id, antenna, id_hex and timestamp',
+  );
+  assert(firstEvent.payload.reader_id === 'SIMULATOR-02', 'the gate identifies itself as SIMULATOR-02');
+  assert(firstEvent.payload.antenna === '4', 'the configured antenna reaches the payload');
+  assert(Array.isArray(firstEvent.payload.id_hex), 'id_hex is an array');
+  assert(firstEvent.summary?.includes('covered'), 'the summary reports coverage progress');
+
+  // Everything must be reported within the planned handful of sweeps.
+  await sleep(2100);
+  gate.run('stop-scan');
+  const gateSweeps = batches.length;
+  assert(gateSweeps >= 4, `the gate kept publishing on its interval (got ${gateSweeps} sweeps)`);
+  const seen = new Set(batches.flat());
+  assert(seen.size === gateTags.length, `every tag was reported eventually (${seen.size}/${gateTags.length})`);
+  assert(gateTags.every((t) => seen.has(t)), 'the reported set is exactly the tag list');
+
+  const covered = gate.events.find((e) => e.name === 'TAG_LIST_COVERED');
+  assert(covered, 'the gate announces when the whole list has been reported');
+  assert(
+    Number(covered!.payload.sweeps) >= 2 && Number(covered!.payload.sweeps) <= 4,
+    `full coverage lands between the 2nd and 4th sweep (got ${covered!.payload.sweeps})`,
+  );
+
+  const coveredAt = batches.findIndex((_, i) => new Set(batches.slice(0, i + 1).flat()).size === gateTags.length);
+  const repeats = batches.flat().length - seen.size;
+  assert(repeats > 0, 'tags are re-reported while still in the field');
+  assert(
+    batches.every((b) => new Set(b).size === b.length),
+    'a single report never lists the same tag twice',
+  );
+  assert(
+    batches.slice(0, coveredAt).every((b) => b.length < gateTags.length),
+    'no sweep before the last one dumps the entire list',
+  );
+  // The mix of new and already-seen tags has to move, or it is not a gate.
+  const mixes = batches.map((b, i) => {
+    const before = new Set(batches.slice(0, i).flat());
+    return `${b.filter((t) => !before.has(t)).length}+${b.filter((t) => before.has(t)).length}`;
+  });
+  assert(new Set(mixes).size > 1, `the new/old mix varies between sweeps (got ${mixes.join(' ')})`);
+  assert(
+    batches.slice(coveredAt + 1).every((b) => b.length > 0),
+    'the gate keeps publishing re-reads after the list is covered',
+  );
+  assert(gate.coverage()?.covered === gateTags.length, 'coverage is reported to the UI');
+
+  // The list stays editable mid-run.
+  gate.setTagsText([...gateTags, 'E28068940000400000009999'].join('\n'));
+  gate.run('start-scan');
+  await sleep(60);
+  gate.run('stop-scan');
+  assert(gate.coverage()?.total === gateTags.length + 1, 'a tag added mid-run joins the plan');
+  gate.clearTimers();
 
   // --- nutrunner state machine ---
   const nut = new NutrunnerSimulator();

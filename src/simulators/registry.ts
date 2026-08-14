@@ -1,8 +1,7 @@
 import type { Simulator } from './core/simulator';
 import type { Category, PlannedSimulator } from './core/types';
 import { RfidHandheldSimulator } from './rfid/rfid-handheld';
-import { NutrunnerSimulator } from './nutrunner/nutrunner';
-import { DigitalIoSimulator } from './digital-io/digital-io';
+import { RfidReaderSimulator } from './rfid/rfid-reader';
 
 export type AnySimulator = Simulator<any>;
 
@@ -14,8 +13,7 @@ export type AnySimulator = Simulator<any>;
  */
 export const simulators: AnySimulator[] = [
   new RfidHandheldSimulator(),
-  new NutrunnerSimulator(),
-  new DigitalIoSimulator(),
+  new RfidReaderSimulator(),
 ];
 
 export function getSimulator(id: string | undefined): AnySimulator | undefined {
@@ -32,9 +30,10 @@ export const CATEGORIES: Category[] = [
 
 /** Declared in the catalog, not implemented yet. Shown as locked cards. */
 export const plannedSimulators: PlannedSimulator[] = [
-  { id: 'rfid-reader', name: 'RFID Reader', category: 'Identification', icon: 'antenna', tagline: 'Fixed multi-antenna gate reader with tag streams.' },
   { id: 'barcode-scanner', name: 'Barcode Scanner', category: 'Identification', icon: 'barcode', tagline: 'Keyboard-wedge and TCP barcode input.' },
   { id: 'vin-scanner', name: 'VIN Scanner', category: 'Identification', icon: 'car', tagline: 'Vehicle identification capture and validation.' },
+  { id: 'nutrunner', name: 'Nutrunner / Tightening Tool', category: 'Industrial Tools', icon: 'wrench', tagline: 'Torque-controlled tightening with OK / NG judgement and result reporting.' },
+  { id: 'digital-io', name: 'Digital I/O Controller', category: 'Industrial Tools', icon: 'io', tagline: 'Discrete input / output block with per-channel toggles and change events.' },
   { id: 'torque-tool', name: 'Torque Tool', category: 'Industrial Tools', icon: 'gauge', tagline: 'Hand tool with torque and angle traces.' },
   { id: 'industrial-camera', name: 'Industrial Camera', category: 'Vision', icon: 'camera', tagline: 'Trigger, exposure and image metadata.' },
   { id: 'vision-inspection', name: 'Vision Inspection Device', category: 'Vision', icon: 'eye', tagline: 'Pass / fail inspection with defect regions.' },

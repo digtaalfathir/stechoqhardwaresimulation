@@ -3,7 +3,7 @@ import { useT, type Translate } from '../lib/i18n';
 import type { TransportResponse } from '../simulators/core/types';
 import { Icon } from './icon';
 import { NutrunnerSimulator } from '../simulators/nutrunner/nutrunner';
-import { RfidHandheldSimulator } from '../simulators/rfid/rfid-handheld';
+import { TagReader } from '../simulators/rfid/tag-reader';
 import { DigitalIoSimulator, type ChannelKind } from '../simulators/digital-io/digital-io';
 
 /**
@@ -14,7 +14,7 @@ import { DigitalIoSimulator, type ChannelKind } from '../simulators/digital-io/d
  * view — a tightening curve, a channel grid. Devices without one render nothing.
  */
 export function DevicePanel({ sim }: { sim: AnySimulator }) {
-  if (sim instanceof RfidHandheldSimulator) return <RfidTagPanel sim={sim} />;
+  if (sim instanceof TagReader) return <RfidTagPanel sim={sim} />;
   if (sim instanceof NutrunnerSimulator) return <NutrunnerPanel sim={sim} />;
   if (sim instanceof DigitalIoSimulator) return <DigitalIoPanel sim={sim} />;
   return null;
@@ -27,7 +27,7 @@ export function DevicePanel({ sim }: { sim: AnySimulator }) {
  * effect on the next sweep with no Apply step, which is what you want when you
  * are adding and removing tags between scans.
  */
-function RfidTagPanel({ sim }: { sim: RfidHandheldSimulator }) {
+function RfidTagPanel({ sim }: { sim: TagReader }) {
   return (
     <>
       <SendResult sim={sim} />
@@ -55,7 +55,7 @@ function explainError(res: TransportResponse, t: Translate): string {
  * The answer to "did it go through?" — verdict first, then the status line, the
  * server's own message, and where it went.
  */
-function SendResult({ sim }: { sim: RfidHandheldSimulator }) {
+function SendResult({ sim }: { sim: TagReader }) {
   const t = useT();
   const { sending, lastResponse: res, lastUrl, lastSentAt } = sim.state;
 
@@ -95,7 +95,7 @@ function SendResult({ sim }: { sim: RfidHandheldSimulator }) {
         <div className="send-detail">
           {!res && !sending && (
             <p className="muted">
-              {t('send.empty', 'Press Scan Once or Start Scan — the response from your endpoint appears here.')}
+              {t('send.empty', 'Trigger a scan — the response from your endpoint appears here.')}
             </p>
           )}
           {res?.error && <p className="send-message t-error">{explainError(res, t)}</p>}
@@ -123,9 +123,10 @@ function SendResult({ sim }: { sim: RfidHandheldSimulator }) {
   );
 }
 
-function TagList({ sim }: { sim: RfidHandheldSimulator }) {
+function TagList({ sim }: { sim: TagReader }) {
   const t = useT();
   const tags = sim.tags();
+  const coverage = sim.coverage();
   return (
     <section className="panel span-2">
       <div className="panel-head">
@@ -133,6 +134,11 @@ function TagList({ sim }: { sim: RfidHandheldSimulator }) {
         <span className="chip">
           {tags.length} {t('unit.tags', 'tags')}
         </span>
+        {coverage && coverage.total > 0 && (
+          <span className={`chip${coverage.covered >= coverage.total ? ' t-ok' : ''}`}>
+            {coverage.covered} / {coverage.total} {t('rfid.covered', 'reported')}
+          </span>
+        )}
         <div className="spacer" />
         <span className="chip t-ok">{t('rfid.live', 'applies instantly')}</span>
         <button type="button" className="btn btn-sm" onClick={() => sim.addRandomTag()}>
@@ -154,10 +160,15 @@ function TagList({ sim }: { sim: RfidHandheldSimulator }) {
         </div>
       </div>
       <p className="panel-note">
-        {t(
-          'rfid.note',
-          'Every sweep posts this whole list as the idHex array — one request per sweep, not one per tag. No Apply Configuration needed.',
-        )}
+        {coverage
+          ? t(
+              'rfid.note.gate',
+              'The gate reports only what its antennas caught in each interval, so tags arrive spread over several sweeps and repeat while still in the field. Edits apply to the next sweep — no Apply Configuration needed.',
+            )
+          : t(
+              'rfid.note',
+              'Every sweep posts this whole list as the idHex array — one request per sweep, not one per tag. No Apply Configuration needed.',
+            )}
       </p>
     </section>
   );

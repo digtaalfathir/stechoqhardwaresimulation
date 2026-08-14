@@ -191,7 +191,7 @@ const ID: Record<string, string> = {
   'send.failed': 'gagal',
   'send.message': 'Respons',
   'send.nobody': '(body kosong)',
-  'send.empty': 'Tekan Scan Once atau Start Scan — respons dari endpoint Anda akan muncul di sini.',
+  'send.empty': 'Jalankan pemindaian — respons dari endpoint Anda akan muncul di sini.',
   'send.err.timeout': 'Tidak ada respons dalam {seconds} detik — server tidak menjawab.',
   'send.err.mixed':
     'Diblokir: halaman ini disajikan lewat HTTPS sedangkan endpoint-nya HTTP (mixed content). Gunakan endpoint HTTPS, atau jalankan simulator secara lokal lewat HTTP.',
@@ -205,6 +205,9 @@ const ID: Record<string, string> = {
   'rfid.live': 'langsung berlaku',
   'rfid.generate': 'Buat Tag Acak',
   'rfid.label': 'Tag hasil pemindaian — satu EPC per baris',
+  'rfid.covered': 'terkirim',
+  'rfid.note.gate':
+    'Gate hanya melaporkan apa yang tertangkap antenanya di tiap interval, jadi tag datang terpencar di beberapa sapuan dan terulang selama masih di area baca. Perubahan berlaku pada sapuan berikutnya — tanpa Terapkan Konfigurasi.',
   'rfid.note':
     'Setiap sapuan mengirim seluruh daftar ini sebagai array idHex — satu request per sapuan, bukan satu request per tag. Tidak perlu Terapkan Konfigurasi.',
   'unit.tags': 'tag',
@@ -220,7 +223,10 @@ const ID: Record<string, string> = {
   'sim.digital-io.tagline': 'Blok input / output diskret dengan sakelar per kanal dan event perubahan.',
   'sim.digital-io.description':
     'Mensimulasikan modul I/O diskret: ubah input atau output mana pun dan amati notifikasi perubahan yang akan diterima backend Anda. Model yang sama mencakup board ESP32, modul W5500, atau coupler Modbus TCP — yang berbeda hanya transport-nya.',
-  'sim.rfid-reader.tagline': 'Reader gerbang multi-antena tetap dengan aliran tag.',
+  'sim.rfid-reader.tagline':
+    'Gate reader tetap yang mengirim batch tag secara parsial dan tumpang tindih pada tiap interval.',
+  'sim.rfid-reader.description':
+    'Mensimulasikan gate RFID tetap: alih-alih satu daftar lengkap per picu, tiap interval hanya mengirim apa yang tertangkap antena pada jendela waktu itu. Tag berdatangan terpencar di beberapa sapuan dan terulang selama masih di area baca, sehingga Anda bisa membuktikan konsumer Anda melakukan deduplikasi dan menunggu set lengkapnya. Request benar-benar dikirim ke endpoint yang Anda konfigurasi.',
   'sim.barcode-scanner.tagline': 'Masukan barcode via keyboard-wedge dan TCP.',
   'sim.vin-scanner.tagline': 'Penangkapan dan validasi nomor identifikasi kendaraan.',
   'sim.torque-tool.tagline': 'Alat tangan dengan jejak torsi dan sudut.',
