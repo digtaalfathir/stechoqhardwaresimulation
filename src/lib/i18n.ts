@@ -15,7 +15,7 @@ import { useSettings, type Lang } from './settings';
 const ID: Record<string, string> = {
   // --- shell ---------------------------------------------------------------
   'skip.content': 'Lewati ke konten',
-  'brand.sub': 'Laboratorium perangkat keras virtual',
+  'brand.sub': 'Laboratorium perangkat keras virtual - BayMax',
   'nav.home': 'Beranda',
   'nav.simulators': 'Simulator',
   'nav.docs': 'Dokumentasi',
