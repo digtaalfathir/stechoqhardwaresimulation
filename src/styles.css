@@ -789,6 +789,73 @@ main {
   font-size: 11px;
 }
 
+/* ---------- planned devices ---------- */
+
+/* Dense on purpose: a planned device is a line of intent, so it never takes the
+   footprint of something you can actually open. */
+.planned-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+  gap: 8px;
+}
+
+.planned-grid.after-cards {
+  margin-top: 8px;
+}
+
+.planned-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel-alt);
+}
+
+.planned-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink-3);
+}
+
+.planned-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.planned-text b {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Wraps rather than truncates: the tagline is the only thing that says what the
+   device will do. */
+.planned-text span {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+.planned-row .chip {
+  flex: none;
+  margin-top: 2px;
+}
+
 /* ---------- device cards ---------- */
 
 .cards {

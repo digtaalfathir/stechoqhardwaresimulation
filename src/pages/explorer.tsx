@@ -1,5 +1,5 @@
 import { CATEGORIES, plannedSimulators, simulators } from '../simulators/registry';
-import { DeviceCard, PlannedCard } from '../components/device-card';
+import { DeviceCard, PlannedRow } from '../components/device-card';
 import { useT } from '../lib/i18n';
 
 export function ExplorerPage() {
@@ -27,23 +27,31 @@ export function ExplorerPage() {
           <section className="category-block" key={category}>
             <div className="category-head">
               <h3>{category}</h3>
-              <span className="chip">
-                {live.length} {t('count.live', 'live')}
-              </span>
+              {live.length > 0 && (
+                <span className="chip t-ok">
+                  {live.length} {t('count.live', 'live')}
+                </span>
+              )}
               {planned.length > 0 && (
                 <span className="chip">
                   {planned.length} {t('count.planned', 'planned')}
                 </span>
               )}
             </div>
-            <div className="grid cards">
-              {live.map((s) => (
-                <DeviceCard key={s.meta.id} sim={s} />
-              ))}
-              {planned.map((d) => (
-                <PlannedCard key={d.id} device={d} />
-              ))}
-            </div>
+            {live.length > 0 && (
+              <div className="grid cards">
+                {live.map((s) => (
+                  <DeviceCard key={s.meta.id} sim={s} />
+                ))}
+              </div>
+            )}
+            {planned.length > 0 && (
+              <div className={`planned-grid${live.length ? ' after-cards' : ''}`}>
+                {planned.map((d) => (
+                  <PlannedRow key={d.id} device={d} />
+                ))}
+              </div>
+            )}
           </section>
         );
       })}

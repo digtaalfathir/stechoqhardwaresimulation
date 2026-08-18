@@ -1,5 +1,5 @@
 import { CATEGORIES, categoryCounts, plannedSimulators, simulators } from '../simulators/registry';
-import { DeviceCard, PlannedCard } from '../components/device-card';
+import { DeviceCard, PlannedRow } from '../components/device-card';
 import { Icon } from '../components/icon';
 import { href } from '../lib/router';
 import { useT, type Translate } from '../lib/i18n';
@@ -281,9 +281,9 @@ export function HomePage() {
             {t('home.soon.cta', 'See the full catalog')}
           </a>
         </div>
-        <div className="grid cards">
-          {plannedSimulators.slice(0, 6).map((d) => (
-            <PlannedCard key={d.id} device={d} />
+        <div className="planned-grid">
+          {plannedSimulators.map((d) => (
+            <PlannedRow key={d.id} device={d} />
           ))}
         </div>
       </section>
