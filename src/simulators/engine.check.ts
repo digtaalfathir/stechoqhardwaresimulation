@@ -291,7 +291,7 @@ async function main() {
   const gate = new RfidReaderSimulator();
   const batches: string[][] = [];
   gate.sender = async (_url, body) => {
-    batches.push([...(body as { id_hex: string[] }).id_hex]);
+    batches.push([...(body as { idHex: string[] }).idHex]);
     return accepted;
   };
   assert(gate.configFields.find((f) => f.key === 'interval')?.default === 7000, 'the gate defaults to a 7s interval');
@@ -315,12 +315,13 @@ async function main() {
   const firstEvent = gate.events.find((e) => e.name === 'RFID_SENT')!;
   assert(
     JSON.stringify(Object.keys(firstEvent.payload)) ===
-      JSON.stringify(['reader_id', 'antenna', 'id_hex', 'timestamp']),
-    'the gate payload carries exactly reader_id, antenna, id_hex and timestamp',
+      JSON.stringify(['reader_id', 'antenna', 'idHex', 'timestamp']),
+    'the gate payload carries exactly reader_id, antenna, idHex and timestamp',
   );
   assert(firstEvent.payload.reader_id === 'SIMULATOR-02', 'the gate identifies itself as SIMULATOR-02');
   assert(firstEvent.payload.antenna === '4', 'the configured antenna reaches the payload');
-  assert(Array.isArray(firstEvent.payload.id_hex), 'id_hex is an array');
+  assert(Array.isArray(firstEvent.payload.idHex), 'idHex is an array');
+  assert(firstEvent.payload.id_hex === undefined, 'the snake_case spelling is gone — the API expects idHex');
   assert(firstEvent.summary?.includes('covered'), 'the summary reports coverage progress');
 
   // Everything must be reported within the planned handful of sweeps.

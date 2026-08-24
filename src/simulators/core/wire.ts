@@ -16,7 +16,10 @@ import type { TransportFrame, TransportResponse } from './types';
  * Never throws: a blocked, refused or timed-out request is a result too, and the
  * whole point of the panel above it is to say which one happened.
  */
-export async function postJson(url: string, body: unknown, timeoutMs = 15000): Promise<TransportResponse> {
+// 30s, not 15: the warehouse API this simulator targets has been measured at
+// ~21s for a plain list read, and aborting a request that was still on its way
+// reports a failure the server never had.
+export async function postJson(url: string, body: unknown, timeoutMs = 30000): Promise<TransportResponse> {
   const started = performance.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

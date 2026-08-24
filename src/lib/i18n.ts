@@ -189,6 +189,8 @@ const ID: Record<string, string> = {
   'send.fail': 'GAGAL',
   'send.delivered': 'terkirim',
   'send.failed': 'gagal',
+  'send.skipped': 'dilewati',
+  'send.skipped.hint': 'Interval tiba saat request sebelumnya masih berjalan',
   'send.message': 'Respons',
   'send.nobody': '(body kosong)',
   'send.empty': 'Jalankan pemindaian — respons dari endpoint Anda akan muncul di sini.',

@@ -161,7 +161,7 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
     return {
       reader_id: READER_ID,
       antenna: this.cfg('antenna'),
-      id_hex: idHex,
+      idHex,
       timestamp: new Date().toISOString(),
     };
   }
@@ -281,7 +281,7 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
     return {
       reader_id: READER_ID,
       antenna: '1',
-      id_hex: ['E280689400004025A987A05A', 'E28068940000502B56E4B56D'],
+      idHex: ['E280689400004025A987A05A', 'E28068940000502B56E4B56D'],
       timestamp: '2026-08-11T01:29:51.482Z',
     };
   }

@@ -76,6 +76,11 @@ function SendResult({ sim }: { sim: TagReader }) {
         <span className={`chip${sim.state.failCount ? ' t-error' : ''}`}>
           {sim.state.failCount} {t('send.failed', 'failed')}
         </span>
+        {sim.state.skipped > 0 && (
+          <span className="chip t-warn" title={t('send.skipped.hint', 'Interval fired while the previous request was still in flight')}>
+            {sim.state.skipped} {t('send.skipped', 'skipped')}
+          </span>
+        )}
       </div>
 
       <div className={`send-result tone-${verdict.tone}`}>
