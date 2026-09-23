@@ -29,8 +29,8 @@ const ENVELOPE = `{
 const TREE = `src/
 ├── simulators/
 │   ├── core/          Simulator base class, shared types, wire builders
-│   ├── rfid/          RFID handheld scanner
-│   ├── nutrunner/     Tightening tool
+│   ├── rfid/          RFID handheld + gate reader
+│   ├── nutrunner/     Tightening tool, Open Protocol telegrams
 │   ├── digital-io/    Discrete I/O controller
 │   └── registry.ts    The one place devices are registered
 ├── components/        Workspace, event stream, inspector, device panels
@@ -56,7 +56,7 @@ export function DocsPage() {
             <strong>{t('docs.callout.title', 'What is really sent, and what is only generated.')}</strong>{' '}
             {t(
               'docs.callout.text',
-              'The RFID handheld posts its payload for real to the endpoint you configure, and shows you the response — status, message and timing. TCP, Modbus and MQTT frames are generated for inspection only, because a browser cannot open those sockets. Live versions of those transports are on the roadmap.',
+              'Both RFID devices post their payload for real to the endpoint you configure, and show you the response — status, message and timing. The nutrunner\'s Open Protocol telegrams, and TCP, Modbus and MQTT frames, are generated for inspection only, because a browser cannot open those sockets. Live versions of those transports are on the roadmap.',
             )}
           </p>
         </div>

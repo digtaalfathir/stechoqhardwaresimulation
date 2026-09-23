@@ -10,6 +10,7 @@ import { RfidReaderSimulator } from './rfid/rfid-reader';
 import { NutrunnerSimulator } from './nutrunner/nutrunner';
 import { DigitalIoSimulator } from './digital-io/digital-io';
 import { httpPost, randomEpc, withResponse } from './core/wire';
+import { MID_0061_FIELDS, NUL, describe, telegram, numField } from './nutrunner/open-protocol';
 import type { TransportResponse } from './core/types';
 
 /** Stand-in for the network: the check must never make a real request. */
@@ -46,12 +47,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   // --- registry contract ---
-  assert(simulators.length === 2, 'registry exposes only the two RFID devices for now');
+  assert(simulators.length === 3, 'registry exposes the live devices');
   assert(
-    simulators.map((s) => s.meta.id).join(',') === 'rfid-handheld,rfid-reader',
-    'the live devices are the handheld and the gate reader',
+    simulators.map((s) => s.meta.id).join(',') === 'rfid-handheld,rfid-reader,nutrunner',
+    'the live devices are the two readers and the nutrunner',
   );
-  for (const hidden of ['nutrunner', 'digital-io']) {
+  for (const hidden of ['digital-io']) {
     assert(getSimulator(hidden) === undefined, `${hidden} is not live`);
     assert(plannedSimulators.some((p) => p.id === hidden), `${hidden} is listed as planned`);
   }
@@ -371,47 +372,140 @@ async function main() {
   assert(gate.coverage()?.total === gateTags.length + 1, 'a tag added mid-run joins the plan');
   gate.clearTimers();
 
-  // --- nutrunner state machine ---
+  // --- open protocol telegram format ---
+  // The length field counts the header and the data but not the NUL.
+  const empty = telegram({ mid: 1 });
+  assert(empty.endsWith(NUL), 'a telegram is NUL terminated');
+  assert(empty.length === 21, `an empty telegram is 20 bytes + NUL (got ${empty.length})`);
+  assert(empty.slice(0, 4) === '0020', `the declared length excludes the NUL (got ${empty.slice(0, 4)})`);
+  assert(empty.slice(4, 8) === '0001', 'the MID is zero padded to four digits');
+  assert(empty.slice(8, 11) === '001', 'the revision defaults to 001');
+  const withData = telegram({ mid: 5 }, '0060');
+  assert(withData.slice(0, 4) === '0024', 'the length grows with the data');
+  assert(
+    describe(telegram({ mid: 61 }, numField(1, 7, 4)), [{ no: '01', label: 'Cell ID', width: 4 }]).some((l) =>
+      l.includes('0007'),
+    ),
+    'the annotated view reads the field back out of the bytes',
+  );
+  assert(
+    describe('0021' + '0061' + '001' + '0' + '01' + '01' + '    ', []).some((l) => l.includes('MISMATCH')),
+    'a wrong length is reported, not hidden',
+  );
+
+  // --- nutrunner over open protocol ---
   const nut = new NutrunnerSimulator();
-  nut.applyConfig({ targetTorque: 40, tolerance: 10, protocol: 'Open Protocol' });
+  assert(
+    JSON.stringify(nut.meta.protocols) === JSON.stringify(['Open Protocol']),
+    'the nutrunner speaks Open Protocol only',
+  );
+  nut.applyConfig({
+    targetTorque: 40,
+    tolerance: 10,
+    targetAngle: 100,
+    angleTolerance: 20,
+    cellId: 3,
+    channelId: 2,
+    controllerName: 'STECHOQ NTR-01',
+    psetId: 7,
+    batchSize: 2,
+    vin: 'JMP2026000123',
+  });
+
+  // Applying the configuration opens the session.
+  const opened = nut.events.find((e) => e.name === 'SESSION_OPENED');
+  assert(opened, 'applying the configuration opens an Open Protocol session');
+  assert(opened!.transport?.protocol === 'Open Protocol', 'the session frame is Open Protocol');
+  const handshake = opened!.transport!.detail;
+  for (const mid of ['0001', '0002', '0060', '0005']) {
+    assert(handshake.includes(`mid       ${mid}`), `the handshake includes MID ${mid}`);
+  }
+  assert(handshake.includes('STECHOQ NTR-01'), 'MID 0002 carries the controller name');
+  assert(!handshake.includes('MISMATCH'), 'every handshake telegram is self-consistent');
+  assert(nut.session() === 'SUBSCRIBED', 'the session reads as subscribed while online');
+
+  // A cycle that lands inside both limits.
   nut.run('force-ok');
   assert(nut.state.phase === 'TIGHTENING', 'the cycle enters TIGHTENING');
   assert(nut.status === 'SIMULATING', 'a running cycle reports SIMULATING');
-  await sleep(1800);
-  assert(nut.state.phase === 'OK', `Force OK lands inside the accept window (got ${nut.state.phase})`);
-  const okResult = nut.events.find((e) => e.name === 'TIGHTENING_RESULT');
-  assert(okResult && okResult.payload.result === 'OK', 'the result payload reports OK');
-  assert(Math.abs(Number(okResult!.payload.torque) - 40) <= 4, 'the OK torque is inside ±10%');
-  assert(Number(okResult!.payload.angle) > 0, 'the result payload carries an angle');
-  assert(nut.state.curve.length > 1, 'the cycle records a torque ramp for the visualisation');
-  assert(okResult!.transport?.protocol === 'TCP', 'Open Protocol results are framed as TCP');
-  assert(okResult!.transport!.detail.includes('0061'), 'the frame is a MID 0061 result');
-
-  nut.run('force-ng');
-  await sleep(1800);
-  assert(nut.state.phase === 'NG', `Force NG lands outside the accept window (got ${nut.state.phase})`);
-  assert(Math.abs(nut.state.torque - 40) > 4, 'the NG torque is outside ±10%');
-  assert(nut.state.cycle === 2 && nut.state.okCount === 1 && nut.state.ngCount === 1, 'cycle counters track results');
-
-  nut.applyConfig({ protocol: 'Modbus TCP' });
-  nut.run('start-tightening');
-  await sleep(1800);
-  assert(nut.events.find((e) => e.name === 'TIGHTENING_RESULT')?.transport?.protocol === 'Modbus TCP', 'the protocol setting selects the frame builder');
-
-  nut.run('force-ok');
   assert(nut.actionState('start-tightening').active === true, 'Start Tightening reads as running mid-cycle');
   assert(nut.actionState('force-ng').disabled === true, 'a second cycle cannot be started mid-cycle');
   await sleep(1800);
+  assert(nut.state.phase === 'OK', `Force OK lands inside both limits (got ${nut.state.phase})`);
   assert(nut.actionState('start-tightening').active !== true, 'the control clears when the cycle ends');
 
+  const okResult = nut.events.find((e) => e.name === 'TIGHTENING_RESULT');
+  assert(okResult, 'the cycle reports a result');
+  const r = okResult!.payload;
+  assert(r.tightening_status === 'OK', 'the payload reports OK');
+  assert(r.torque_status === 'OK' && r.angle_status === 'OK', 'both limit statuses are OK');
+  assert(r.cell_id === 3 && r.channel_id === 2, 'the configured cell and channel reach the payload');
+  assert(r.pset_id === 7 && r.vin === 'JMP2026000123', 'pset and VIN reach the payload');
+  assert(Number(r.torque) >= Number(r.torque_min) && Number(r.torque) <= Number(r.torque_max), 'the OK torque is inside its limits');
+  assert(nut.state.curve.length > 1, 'the cycle records a torque ramp for the visualisation');
+
+  // The MID 0061 telegram itself.
+  const resultFrame = okResult!.transport!;
+  assert(resultFrame.protocol === 'Open Protocol', 'the result is framed as Open Protocol');
+  assert(resultFrame.live !== true, 'the telegram is generated, never claimed as sent');
+  const detail = resultFrame.detail;
+  assert(detail.includes('mid       0061'), 'the result telegram is MID 0061');
+  assert(detail.includes('mid       0062'), 'the client acknowledges with MID 0062');
+  assert(!detail.includes('MISMATCH'), 'the MID 0061 length and every field line up');
+  assert(!detail.includes('TRAILING BYTES'), 'MID 0061 has no unaccounted bytes');
+  assert(detail.includes('Tightening status') && detail.includes('(OK)'), 'the annotated view decodes the status');
+  const torqueCenti = String(Math.round(Number(r.torque) * 100)).padStart(6, '0');
+  assert(detail.includes(`Torque                       ${torqueCenti}`), `torque is carried x100 (expected ${torqueCenti})`);
+  assert(detail.includes('<NUL>'), 'the raw line shows the terminator');
+  assert(detail.includes('  0000  30'), 'the hex dump starts at offset 0000');
+
+  // MID 0061 revision 1 is 231 bytes: 20 header + 211 data.
+  const raw = detail.split('\n').find((l) => l.trim().startsWith('0231'));
+  assert(raw, `the MID 0061 telegram declares 231 bytes (lines: ${detail.split('\n').slice(0, 3).join(' | ')})`);
+  assert(
+    MID_0061_FIELDS.reduce((sum, f) => sum + 2 + f.width, 20) === 231,
+    'the field table itself adds up to 231 bytes',
+  );
+
+  // NG breaks a limit, and the failing limit is named.
+  nut.run('force-ng');
+  await sleep(1800);
+  assert(nut.state.phase === 'NG', `Force NG breaks a limit (got ${nut.state.phase})`);
+  const ng = nut.events.find((e) => e.name === 'TIGHTENING_RESULT')!.payload;
+  assert(ng.tightening_status === 'NG', 'the payload reports NG');
+  assert(
+    ng.torque_status !== 'OK' || ng.angle_status !== 'OK',
+    'an NG names which limit failed',
+  );
+  assert(nut.state.cycle === 2 && nut.state.okCount === 1 && nut.state.ngCount === 1, 'cycle counters track results');
+  assert(nut.state.tighteningId === 2, 'the tightening id increments for every reported fastening');
+
+  // The batch counts OK fastenings and completes at the configured size.
+  const beforeBatch = nut.state.batchCounter;
+  nut.run('force-ok');
+  await sleep(1800);
+  assert(nut.state.batchCounter === beforeBatch + 1 || nut.state.batchCounter === 0, 'an OK fastening advances the batch');
+  const completed = nut.events.find((e) => e.name === 'BATCH_COMPLETED');
+  assert(completed, 'the batch completes at the configured size');
+  assert(nut.state.batchCounter === 0, 'the batch counter rolls over once complete');
+
+  // A tool alarm is a MID 0071 telegram, not a silent failure.
   nut.run('trigger-error');
-  assert(nut.state.phase === 'ERROR' && nut.status === 'ERROR', 'a tool fault puts the device in ERROR');
-  assert(nut.events[0].name === 'DEVICE_ERROR', 'the fault is logged');
+  assert(nut.state.phase === 'ERROR' && nut.status === 'ERROR', 'a tool alarm puts the device in ERROR');
+  const alarm = nut.events[0];
+  assert(alarm.name === 'DEVICE_ERROR', 'the alarm is logged');
+  assert(alarm.transport!.detail.includes('mid       0071'), 'the alarm is reported as MID 0071');
+  assert(alarm.transport!.detail.includes('Tool ready status'), 'the alarm telegram carries the tool ready flag');
+  assert(!alarm.transport!.detail.includes('MISMATCH'), 'the alarm telegram is self-consistent');
+  assert(String(alarm.payload.error_code).startsWith('E'), 'the alarm carries a controller error code');
+
   nut.run('start-tightening');
   await sleep(1800);
-  assert(nut.state.phase !== 'ERROR', 'the device runs again after a fault');
+  assert(nut.state.phase !== 'ERROR', 'the controller runs again after an alarm');
   nut.run('reset');
-  assert(nut.state.phase === 'READY' && nut.status === 'CONNECTED', 'reset clears the fault');
+  assert(nut.state.phase === 'READY' && nut.status === 'CONNECTED', 'reset clears the alarm');
+  assert(nut.state.batchCounter === 0 && nut.state.tighteningId === 0, 'reset clears the batch and the tightening id');
+  nut.clearTimers();
 
   // --- digital i/o ---
   const dio = new DigitalIoSimulator();

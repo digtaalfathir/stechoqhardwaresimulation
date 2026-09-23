@@ -128,7 +128,7 @@ const ID: Record<string, string> = {
   'ws.comm.empty':
     'Belum ada lalu lintas. Aksi yang akan menjangkau backend muncul di sini beserta protokolnya.',
   'ws.comm.note':
-    'Request REST benar-benar dikirim ke endpoint yang Anda konfigurasi; frame TCP, Modbus, dan MQTT hanya dibuat untuk diperiksa. Pilih event di atas untuk membaca frame lengkapnya.',
+    'Request REST benar-benar dikirim ke endpoint yang Anda konfigurasi; telegram Open Protocol serta frame TCP, Modbus, dan MQTT hanya dibuat untuk diperiksa. Pilih event di atas untuk membaca frame lengkapnya.',
   'ws.comm.time': 'Waktu',
   'ws.comm.protocol': 'Protokol',
   'ws.comm.direction': 'Arah',
@@ -219,9 +219,10 @@ const ID: Record<string, string> = {
     'Reader UHF genggam yang benar-benar mengirim satu batch pembacaan tag ke API warehouse Anda.',
   'sim.rfid-handheld.description':
     'Mensimulasikan reader RFID UHF genggam: sapuan sekali picu atau kontinu, masing-masing mengirim seluruh daftar tag dalam satu request ke endpoint yang Anda konfigurasi. Request-nya benar-benar dikirim, sehingga responsnya — status, pesan, dan waktu — memberi tahu apakah backend Anda menerimanya. Daftar tag bisa diubah langsung tanpa menerapkan ulang konfigurasi.',
-  'sim.nutrunner.tagline': 'Pengencangan terkendali torsi dengan penilaian OK / NG dan pelaporan hasil.',
+  'sim.nutrunner.tagline':
+    'Pengencangan terkendali torsi yang dilaporkan sebagai telegram Open Protocol MID 0061 sungguhan.',
   'sim.nutrunner.description':
-    'Mensimulasikan spindle pengencang: menjalankan ramp torsi dan sudut menuju target, menilai hasil pengencangan terhadap pita toleransi, lalu melaporkannya seperti kontroler sungguhan — termasuk kasus NG paksa dan gangguan alat yang sulit direproduksi di lini produksi.',
+    'Mensimulasikan kontroler pengencang yang berbicara Open Protocol: ramp torsi dan sudut menuju target, dinilai per batas persis seperti kontroler sungguhan, lalu dilaporkan sebagai telegram MID 0061 yang akurat byte demi byte di dalam sesi sungguhan (handshake MID 0001/0002, subscribe MID 0060, acknowledge MID 0062). NG paksa, torsi terlalu rendah atau tinggi, dan alarm alat hanya berjarak satu klik. Telegram dibuat untuk diperiksa — browser tidak bisa membuka socket TCP ke port 4545.',
   'sim.digital-io.tagline': 'Blok input / output diskret dengan sakelar per kanal dan event perubahan.',
   'sim.digital-io.description':
     'Mensimulasikan modul I/O diskret: ubah input atau output mana pun dan amati notifikasi perubahan yang akan diterima backend Anda. Model yang sama mencakup board ESP32, modul W5500, atau coupler Modbus TCP — yang berbeda hanya transport-nya.',
@@ -250,7 +251,7 @@ const ID: Record<string, string> = {
     'Stechoq Hardware Simulation adalah laboratorium perangkat keras virtual. Setiap simulator mereproduksi tiga hal dari perangkat fisik: statusnya, aksinya, dan komunikasinya. Antarmuka hanyalah cara Anda mengendalikan dan mengamati simulasi itu — mesin simulasinya sendiri tidak tahu-menahu soal adanya UI.',
   'docs.callout.title': 'Mana yang benar-benar dikirim, mana yang hanya dibuat.',
   'docs.callout.text':
-    'RFID handheld mengirim payload-nya sungguhan ke endpoint yang Anda konfigurasi, lalu menampilkan responsnya — status, pesan, dan waktu. Frame TCP, Modbus, dan MQTT hanya dibuat untuk diperiksa, karena browser tidak bisa membuka socket tersebut. Versi sungguhan dari transport itu ada di peta jalan.',
+    'Kedua perangkat RFID mengirim payload-nya sungguhan ke endpoint yang Anda konfigurasi, lalu menampilkan responsnya — status, pesan, dan waktu. Telegram Open Protocol milik nutrunner serta frame TCP, Modbus, dan MQTT hanya dibuat untuk diperiksa, karena browser tidak bisa membuka socket tersebut. Versi sungguhan dari transport itu ada di peta jalan.',
   'docs.use.title': 'Menggunakan simulator',
   'docs.use.1': 'Buka sebuah perangkat dari katalog.',
   'docs.use.2':

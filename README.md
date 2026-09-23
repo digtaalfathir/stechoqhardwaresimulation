@@ -30,16 +30,25 @@ are needed and deep links survive a hard refresh. There is no backend: the app i
 
 ## Live simulators
 
-| Device                     | Id              | Protocols framed                 |
-| -------------------------- | --------------- | -------------------------------- |
-| RFID Handheld Scanner      | `rfid-handheld` | REST                             |
-| Nutrunner / Tightening Tool| `nutrunner`     | Open Protocol, Modbus TCP, REST  |
-| Digital I/O Controller     | `digital-io`    | Modbus TCP, REST, MQTT           |
+| Device                      | Id              | Transport                            |
+| --------------------------- | --------------- | ------------------------------------ |
+| RFID Handheld Scanner       | `rfid-handheld` | REST — really sent                   |
+| RFID Reader (fixed gate)    | `rfid-reader`   | REST — really sent                   |
+| Nutrunner / Tightening Tool | `nutrunner`     | Open Protocol — telegrams generated  |
 
-The RFID handheld **really sends** its payload to the configured endpoint and reports the response —
+Both RFID devices **really send** their payload to the configured endpoint and report the response —
 status, message and timing — so a failure on screen is a real one (rejected, unreachable, or CORS).
-TCP, Modbus and MQTT frames are **generated for inspection only**, because a browser cannot open
-those sockets; live versions are future work.
+
+The nutrunner speaks **Open Protocol**: a MID 0001/0002 handshake and a MID 0060 subscribe when the
+configuration is applied, then a byte-accurate MID 0061 revision 1 telegram per fastening, a MID 0062
+acknowledge, and MID 0071 for tool alarms. The telegrams are **generated for inspection**, because a
+browser cannot open a TCP socket to port 4545 — everything above the socket is faithful, so a
+consumer's parser can be checked against them byte for byte. Telegram building and annotation live in
+[src/simulators/nutrunner/open-protocol.ts](src/simulators/nutrunner/open-protocol.ts); `npm run check`
+asserts the declared length, every field offset and the torque x100 encoding.
+
+Devices still in the catalog but not implemented (Digital I/O, Industrial Camera, PLC, REST API
+Device, TCP Device) appear as planned rows in the explorer.
 
 ## Layout
 

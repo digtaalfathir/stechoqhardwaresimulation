@@ -212,7 +212,13 @@ function ConfigPanel({ sim }: { sim: AnySimulator }) {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => sim.applyConfig(form)}
+            onClick={() => {
+              sim.applyConfig(form);
+              // Re-read what the device accepted: the form then shows the
+              // coerced and clamped values, and "unapplied changes" clears
+              // instead of sticking because "2" !== 2.
+              setForm({ ...sim.config });
+            }}
             disabled={!dirty && sim.status !== 'OFFLINE'}
           >
             {t('ws.config.apply', 'Apply Configuration')}
@@ -374,7 +380,7 @@ function CommunicationLog({ events, t }: { events: SimEvent[]; t: Translate }) {
       <p className="panel-note">
         {t(
           'ws.comm.note',
-          'REST requests are really sent to the endpoint you configured; TCP, Modbus and MQTT frames are generated for inspection only. Select an event above to read the full frame.',
+          'REST requests are really sent to the endpoint you configured; Open Protocol telegrams and TCP, Modbus and MQTT frames are generated for inspection only. Select an event above to read the full frame.',
         )}
       </p>
     </section>
