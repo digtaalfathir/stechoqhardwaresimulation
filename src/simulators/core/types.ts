@@ -19,9 +19,19 @@ export type Category =
  * whatever host you actually run); `switch` is a two-way toggle; `checkbox` is a
  * boolean flag.
  */
+/** Ties one field's rendering to the current value of another. */
+export interface FieldCondition {
+  key: string;
+  equals: string | number | boolean;
+}
+
 export interface ConfigField {
   key: string;
   label: string;
+  /** Only rendered while this condition holds — for mode-specific options. */
+  visibleWhen?: FieldCondition;
+  /** Locked to `value`, and shown disabled, while this condition holds. */
+  forcedWhen?: FieldCondition & { value: string | number | boolean };
   type: 'text' | 'number' | 'select' | 'textarea' | 'combo' | 'switch' | 'checkbox';
   /** Shown so the value is visible, but never editable and never overwritten. */
   readonly?: boolean;

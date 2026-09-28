@@ -204,9 +204,21 @@ function ConfigPanel({ sim }: { sim: AnySimulator }) {
       </div>
       <div className="panel-body">
         <div className="fields">
-          {sim.configFields.map((f) => (
-            <Field key={f.key} sim={sim} field={f} value={form[f.key]} onChange={set} />
-          ))}
+          {sim.configFields
+            .filter((f) => !f.visibleWhen || form[f.visibleWhen.key] === f.visibleWhen.equals)
+            .map((f) => {
+              const forced = f.forcedWhen && form[f.forcedWhen.key] === f.forcedWhen.equals;
+              return (
+                <Field
+                  key={f.key}
+                  sim={sim}
+                  field={f}
+                  value={forced ? f.forcedWhen!.value : form[f.key]}
+                  forced={forced}
+                  onChange={set}
+                />
+              );
+            })}
         </div>
         <div className="field-row-actions">
           <button
@@ -241,11 +253,14 @@ function Field({
   sim,
   field,
   value,
+  forced,
   onChange,
 }: {
   sim: AnySimulator;
   field: ConfigField;
   value: string | number | boolean | undefined;
+  /** Another field is driving this one; show the value but refuse edits. */
+  forced?: boolean;
   onChange: (key: string, value: string | boolean) => void;
 }) {
   const t = useT();
@@ -286,11 +301,12 @@ function Field({
           ))}
         </div>
       ) : field.type === 'checkbox' ? (
-        <label className="checkfield">
+        <label className={`checkfield${forced ? ' is-forced' : ''}`}>
           <input
             id={id}
             type="checkbox"
             checked={value === true}
+            disabled={forced}
             onChange={(e) => onChange(field.key, e.target.checked)}
           />
           {value === true ? t('field.on', 'Enabled') : t('field.off', 'Disabled')}

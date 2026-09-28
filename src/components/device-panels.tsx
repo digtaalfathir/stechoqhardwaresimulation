@@ -1,9 +1,11 @@
 import type { AnySimulator } from '../simulators/registry';
+import { useEffect, useRef, useState } from 'react';
 import { useT, type Translate } from '../lib/i18n';
 import type { TransportResponse } from '../simulators/core/types';
 import { Icon } from './icon';
 import { NutrunnerSimulator } from '../simulators/nutrunner/nutrunner';
 import { TagReader } from '../simulators/rfid/tag-reader';
+import { REPLACEMENT_REMARKS, RfidHandheldSimulator } from '../simulators/rfid/rfid-handheld';
 import { DigitalIoSimulator, type ChannelKind } from '../simulators/digital-io/digital-io';
 
 /**
@@ -28,11 +30,126 @@ export function DevicePanel({ sim }: { sim: AnySimulator }) {
  * are adding and removing tags between scans.
  */
 function RfidTagPanel({ sim }: { sim: TagReader }) {
+  const replacing = sim instanceof RfidHandheldSimulator && sim.replacementActive();
   return (
     <>
       <SendResult sim={sim} />
-      <TagList sim={sim} />
+      <TagList sim={sim} replacing={replacing} />
+      {sim instanceof RfidHandheldSimulator && sim.state.replacementOpen && (
+        <ReplacementDialog sim={sim} />
+      )}
     </>
+  );
+}
+
+/**
+ * Asks for the half of a replacement the scanner cannot know: which tag is being
+ * retired, and why. Opened by the device when the trigger is pulled, so the form
+ * cannot be skipped and the scan is already halted by the time it appears.
+ */
+function ReplacementDialog({ sim }: { sim: RfidHandheldSimulator }) {
+  const t = useT();
+  const [oldTag, setOldTag] = useState('');
+  const [remark, setRemark] = useState(REPLACEMENT_REMARKS[0]);
+  const [failed, setFailed] = useState(false);
+  const firstField = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    firstField.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') sim.closeReplacement();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [sim]);
+
+  const newTag = sim.newTag();
+  const busy = sim.state.sending;
+  const ready = oldTag.trim().length > 0 && newTag.length > 0 && !busy;
+  const response = sim.state.lastResponse;
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ready) return;
+    const ok = await sim.submitReplacement(oldTag, remark);
+    setFailed(!ok);
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={() => !busy && sim.closeReplacement()}>
+      <form
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="replacement-title"
+        onMouseDown={(e) => e.stopPropagation()}
+        onSubmit={submit}
+      >
+        <div className="panel-head">
+          <span className="panel-title" id="replacement-title">
+            {t('repl.title', 'Tag Replacement')}
+          </span>
+          <div className="spacer" />
+          <span className="chip">{t('repl.register', 'register mode')}</span>
+        </div>
+
+        <div className="modal-body">
+          <p className="modal-lede">
+            {t('repl.lede', 'The scanner stopped on this tag. Tell the backend which tag it replaces.')}
+          </p>
+
+          <div className="field">
+            <label>{t('repl.new', 'New tag (scanned)')}</label>
+            <input className="mono-input readonly-input" value={newTag} readOnly tabIndex={-1} />
+            <span className="hint">{t('repl.new.hint', 'Taken from the tag list — edit it there')}</span>
+          </div>
+
+          <div className="field">
+            <label htmlFor="repl-old">{t('repl.old', 'Old tag (replaced)')}</label>
+            <input
+              id="repl-old"
+              ref={firstField}
+              className="mono-input"
+              value={oldTag}
+              placeholder="E2806894000050367572D095"
+              autoComplete="off"
+              onChange={(e) => {
+                setOldTag(e.target.value);
+                setFailed(false);
+              }}
+            />
+            <span className="hint">{t('repl.old.hint', 'Typed by hand — the damaged tag cannot be read')}</span>
+          </div>
+
+          <div className="field">
+            <label htmlFor="repl-remark">{t('repl.remark', 'Reason')}</label>
+            <select id="repl-remark" value={remark} onChange={(e) => setRemark(e.target.value)}>
+              {REPLACEMENT_REMARKS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {failed && response && (
+            <p className="modal-error">
+              {response.error ?? `${response.status} ${response.statusText} — ${response.message}`}
+            </p>
+          )}
+        </div>
+
+        <div className="modal-foot">
+          <span className="muted mono modal-target">POST {sim.replaceUrl()}</span>
+          <button type="button" className="btn" onClick={() => sim.closeReplacement()} disabled={busy}>
+            {t('repl.cancel', 'Cancel')}
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={!ready}>
+            {busy ? t('repl.sending', 'Sending…') : t('repl.submit', 'Submit Replacement')}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -128,7 +245,7 @@ function SendResult({ sim }: { sim: TagReader }) {
   );
 }
 
-function TagList({ sim }: { sim: TagReader }) {
+function TagList({ sim, replacing }: { sim: TagReader; replacing?: boolean }) {
   const t = useT();
   const tags = sim.tags();
   const coverage = sim.coverage();
@@ -136,8 +253,8 @@ function TagList({ sim }: { sim: TagReader }) {
     <section className="panel span-2">
       <div className="panel-head">
         <span className="panel-title">{t('rfid.title', 'Tag List')}</span>
-        <span className="chip">
-          {tags.length} {t('unit.tags', 'tags')}
+        <span className={`chip${replacing && tags.length > 1 ? ' t-warn' : ''}`}>
+          {replacing ? `${tags.length} / 1` : tags.length} {t('unit.tags', 'tags')}
         </span>
         {coverage && coverage.total > 0 && (
           <span className={`chip${coverage.covered >= coverage.total ? ' t-ok' : ''}`}>
@@ -153,19 +270,40 @@ function TagList({ sim }: { sim: TagReader }) {
       </div>
       <div className="panel-body">
         <div className="field">
-          <label htmlFor="rfid-tags">{t('rfid.label', 'Scanned tags — one EPC per line')}</label>
-          <textarea
-            id="rfid-tags"
-            className="mono-input tag-input"
-            spellCheck={false}
-            value={sim.state.tagsText}
-            placeholder={t('rfid.placeholder', 'E280689400004025A987A05A')}
-            onChange={(e) => sim.setTagsText(e.target.value)}
-          />
+          <label htmlFor="rfid-tags">
+            {replacing
+              ? t('rfid.label.one', 'Scanned tag — the new tag that replaces the old one')
+              : t('rfid.label', 'Scanned tags — one EPC per line')}
+          </label>
+          {replacing ? (
+            // One tag, so one line: the control itself makes the rule obvious.
+            <input
+              id="rfid-tags"
+              className="mono-input"
+              spellCheck={false}
+              value={sim.state.tagsText}
+              placeholder={t('rfid.placeholder', 'E280689400004025A987A05A')}
+              onChange={(e) => sim.setTagsText(e.target.value.replace(/\n/g, ''))}
+            />
+          ) : (
+            <textarea
+              id="rfid-tags"
+              className="mono-input tag-input"
+              spellCheck={false}
+              value={sim.state.tagsText}
+              placeholder={t('rfid.placeholder', 'E280689400004025A987A05A')}
+              onChange={(e) => sim.setTagsText(e.target.value)}
+            />
+          )}
         </div>
       </div>
       <p className="panel-note">
-        {coverage
+        {replacing
+          ? t(
+              'rfid.note.replace',
+              'Pull the trigger and the scanner stops, then asks which tag this one replaces. The replacement is posted to the replace endpoint, not to the scan endpoint.',
+            )
+          : coverage
           ? t(
               'rfid.note.gate',
               'The gate reports only what its antennas caught in each interval, so tags arrive spread over several sweeps and repeat while still in the field. Edits apply to the next sweep — no Apply Configuration needed.',

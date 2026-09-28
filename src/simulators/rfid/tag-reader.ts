@@ -92,15 +92,26 @@ export abstract class TagReader<S extends TagReaderState = TagReaderState> exten
 
   /**
    * One real POST. Counters, the stored response and the logged event are the
-   * same for every reader; only the summary note differs.
+   * same for every send; the caller only says what it is sending and where.
+   * Returns whether the endpoint accepted it, so a form can stay open on failure.
    */
-  protected async dispatch(idHex: string[], payload: Record<string, unknown>, note?: string) {
+  protected async dispatch(
+    payload: Record<string, unknown>,
+    opts: {
+      /** Leads the event summary, e.g. "6 tag(s)" or "Replacement". */
+      label: string;
+      note?: string;
+      /** Defaults to the configured base URL + endpoint. */
+      url?: string;
+      events?: { ok: string; fail: string };
+    },
+  ): Promise<boolean> {
     // A slow endpoint must not stack up requests behind a fast interval.
     if (this.inFlight) {
       this.setState({ skipped: this.state.skipped + 1 } as Partial<S>);
-      return;
+      return false;
     }
-    const url = this.url();
+    const url = opts.url ?? this.url();
     this.inFlight = true;
     this.setState({
       sending: true,
@@ -119,13 +130,15 @@ export abstract class TagReader<S extends TagReaderState = TagReaderState> exten
     } as Partial<S>);
 
     const outcome = res.error ? 'request blocked or unreachable' : `${res.status} ${res.statusText}`.trim();
+    const events = opts.events ?? { ok: 'RFID_SENT', fail: 'RFID_SEND_FAILED' };
     // The payload stays exactly the request body — copyable and identical to
     // what your backend receives. The response lives on the frame.
-    this.emit(res.ok ? 'RFID_SENT' : 'RFID_SEND_FAILED', payload, {
+    this.emit(res.ok ? events.ok : events.fail, payload, {
       tone: res.ok ? 'ok' : 'error',
-      summary: `${idHex.length} tag(s)${note ? ` · ${note}` : ''} → ${outcome}`,
+      summary: `${opts.label}${opts.note ? ` · ${opts.note}` : ''} → ${outcome}`,
       transport: withResponse(httpPost(url, payload), res),
     });
+    return res.ok;
   }
 
   /** Empty: every value is already shown in the configuration and send result. */

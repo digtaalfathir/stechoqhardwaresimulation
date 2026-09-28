@@ -288,6 +288,82 @@ async function main() {
   assert(rfid.cfg('maker_name') === 'check', 'reset keeps the applied configuration');
   assert(rfid.events[0].name === 'DEVICE_RESET', 'reset is logged');
 
+  // --- handheld replacement mode ---
+  const repl = new RfidHandheldSimulator();
+  let replUrl = '';
+  let replBody: Record<string, unknown> = {};
+  repl.sender = async (url, body) => {
+    replUrl = url;
+    replBody = body as Record<string, unknown>;
+    return accepted;
+  };
+  repl.applyConfig({ baseUrl: 'http://localhost:8000', mode: 'wo', replacement: true, opname: false });
+  assert(!repl.replacementActive(), 'replacement stays off outside register mode');
+  assert(repl.bool('opname') === true, 'the replacement flag forces opname on even from a direct patch');
+
+  repl.applyConfig({ mode: 'register', replacement: true, factoryId: 382 });
+  assert(repl.replacementActive(), 'register mode turns replacement on');
+  assert(
+    repl.replaceUrl() === 'http://localhost:8000/api/v1/master/register-rfids/replace',
+    `the replace endpoint joins onto the base URL (got ${repl.replaceUrl()})`,
+  );
+
+  // A trigger pull halts the scan and asks for the old tag instead of sending.
+  repl.setTagsText('RFID_NEW_703');
+  const beforeOpen = repl.state.sendCount;
+  repl.run('start-scan');
+  await sleep(20);
+  assert(repl.state.replacementOpen, 'a trigger pull opens the replacement form');
+  assert(!repl.state.scanning, 'the scanner stops when the form opens');
+  assert(repl.state.sendCount === beforeOpen, 'nothing is sent before the form is filled in');
+  assert(repl.events[0].name === 'REPLACEMENT_SCANNED', 'the scan is logged as a replacement capture');
+  assert(repl.actionState('stop-scan').disabled === true, 'continuous scanning is meaningless here');
+
+  // An incomplete form is refused, not posted half-filled.
+  assert((await repl.submitReplacement('', 'Tag damaged')) === false, 'an empty old tag is refused');
+  assert(repl.events[0].name === 'REPLACEMENT_INCOMPLETE', 'the refusal says what is missing');
+  assert(repl.state.sendCount === beforeOpen, 'a refused form sends nothing');
+
+  // The real thing.
+  assert(await repl.submitReplacement('  E2806894000050367572D095  ', 'Tag damaged'), 'a complete form is sent');
+  assert(replUrl === repl.replaceUrl(), 'the replacement goes to the replace endpoint, not the scan endpoint');
+  assert(
+    JSON.stringify(Object.keys(replBody)) ===
+      JSON.stringify(['old_rfid_number', 'new_rfid_number', 'replacement_remark', 'factory_id', 'opname']),
+    `the replacement body carries exactly the agreed keys (got ${Object.keys(replBody)})`,
+  );
+  assert(replBody.old_rfid_number === 'E2806894000050367572D095', 'the old tag is trimmed');
+  assert(replBody.new_rfid_number === 'RFID_NEW_703', 'the new tag comes from the tag list');
+  assert(replBody.replacement_remark === 'Tag damaged', 'the reason reaches the body');
+  assert(replBody.factory_id === 382 && typeof replBody.factory_id === 'number', 'factory_id is a number');
+  assert(replBody.opname === true, 'opname rides along as a boolean');
+  assert(repl.events[0].name === 'REPLACEMENT_SENT', 'a delivered replacement is logged as such');
+  assert(!repl.state.replacementOpen, 'the form closes once the endpoint accepts it');
+
+  // A rejected replacement keeps the form open so it can be corrected.
+  repl.sender = async () => rejected;
+  repl.run('scan-once');
+  await sleep(20);
+  assert(repl.state.replacementOpen, 'the form reopens on the next trigger pull');
+  assert((await repl.submitReplacement('OLD-TAG', 'Tag unreadable')) === false, 'a rejected replacement reports failure');
+  assert(repl.state.replacementOpen, 'a rejected replacement keeps the form open');
+  assert(repl.events[0].name === 'REPLACEMENT_FAILED', 'the rejection is logged');
+  repl.closeReplacement();
+  assert(!repl.state.replacementOpen, 'cancelling closes the form');
+  assert(repl.events[0].name === 'REPLACEMENT_CANCELLED', 'cancelling says nothing was sent');
+
+  // Back in wo mode the handheld sweeps as before.
+  repl.sender = async () => accepted;
+  repl.applyConfig({ mode: 'wo', replacement: false });
+  repl.setTagsText('AAAA\nBBBB');
+  const sweepBefore = repl.state.sendCount;
+  repl.run('scan-once');
+  await sleep(30);
+  assert(repl.state.sendCount === sweepBefore + 1, 'a normal sweep still sends');
+  assert(repl.events[0].name === 'RFID_SENT', 'a normal sweep is still an RFID_SENT');
+  assert(!repl.state.replacementOpen, 'no form appears outside replacement mode');
+  repl.clearTimers();
+
   // --- rfid gate reader: partial, overlapping batches ---
   const gate = new RfidReaderSimulator();
   const batches: string[][] = [];

@@ -150,6 +150,12 @@ export abstract class Simulator<S extends object = Record<string, never>> {
         this.config[field.key] = String(raw);
       }
     }
+    // Forced values are applied after the loop, so the field they depend on has
+    // already taken its new value.
+    for (const field of this.configFields) {
+      const rule = field.forcedWhen;
+      if (rule && this.config[rule.key] === rule.equals) this.config[field.key] = rule.value;
+    }
     if (this.status === 'OFFLINE') this.status = 'CONNECTED';
     this.onConfigApplied();
     this.emit('DEVICE_CONFIGURED', { ...this.config }, { tone: 'neutral', summary: 'Configuration applied' });

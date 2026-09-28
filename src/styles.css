@@ -1102,6 +1102,15 @@ a.card:hover {
   font-size: 12.5px;
 }
 
+/* A hint must never read like a value — this form decides which database row
+   gets rewritten. */
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--ink-3);
+  opacity: 0.75;
+  font-style: italic;
+}
+
 .field .hint {
   font-size: 11.5px;
   color: var(--ink-3);
@@ -1501,6 +1510,14 @@ pre.code.inline {
   cursor: pointer;
 }
 
+/* Driven by another field: readable, but plainly not yours to change here. */
+.field label.checkfield.is-forced {
+  background: var(--panel-sunken);
+  border-style: dashed;
+  color: var(--ink-2);
+  cursor: default;
+}
+
 /* A switch field reuses the segmented control from the settings menu. */
 .field .segmented button {
   font-family: var(--mono);
@@ -1629,6 +1646,74 @@ pre.code.inline {
 .controls-row .control {
   min-width: 190px;
   flex: 1 1 190px;
+}
+
+/* ---------- modal ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(10, 14, 20, 0.45);
+}
+
+.modal {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 14px 16px;
+}
+
+.modal-lede {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.modal-error {
+  padding: 9px 11px;
+  border: 1px solid var(--error-line);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--error-bg);
+  color: var(--error);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.modal-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 11px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--panel-alt);
+}
+
+.modal-target {
+  flex: 1;
+  min-width: 100%;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 560px) {
+  .modal-target {
+    min-width: 0;
+  }
 }
 
 /* ---------- send result ---------- */

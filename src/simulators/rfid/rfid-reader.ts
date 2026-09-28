@@ -236,7 +236,10 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
     if (batch.length === 0) batch = sample(this.reported, 1 + Math.floor(Math.random() * 3));
 
     this.setState({ sweep, covered: this.reported.length, total: all.length });
-    await this.dispatch(batch, this.buildPayload(batch), `${this.reported.length}/${all.length} covered`);
+    await this.dispatch(this.buildPayload(batch), {
+      label: `${batch.length} tag(s)`,
+      note: `${this.reported.length}/${all.length} covered`,
+    });
 
     if (fresh.length > 0 && this.pending.length === 0) {
       this.emit(

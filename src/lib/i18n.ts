@@ -202,6 +202,19 @@ const ID: Record<string, string> = {
   'send.note':
     'Request ini benar-benar dikirim dari browser Anda. Kegagalan di sini adalah kegagalan sungguhan: endpoint menolak, tidak dapat dijangkau, atau tidak mengizinkan halaman ini (CORS).',
 
+  // --- rfid replacement ---
+  'repl.title': 'Penggantian Tag',
+  'repl.register': 'mode register',
+  'repl.lede': 'Pemindai berhenti pada tag ini. Beri tahu backend tag mana yang digantikannya.',
+  'repl.new': 'Tag baru (hasil pindai)',
+  'repl.new.hint': 'Diambil dari daftar tag — ubah di sana',
+  'repl.old': 'Tag lama (yang diganti)',
+  'repl.old.hint': 'Diketik manual — tag yang rusak tidak bisa dibaca',
+  'repl.remark': 'Alasan',
+  'repl.cancel': 'Batal',
+  'repl.submit': 'Kirim Penggantian',
+  'repl.sending': 'Mengirim…',
+
   // --- rfid tag list panel ---
   'rfid.title': 'Daftar Tag',
   'rfid.live': 'langsung berlaku',
@@ -210,6 +223,9 @@ const ID: Record<string, string> = {
   'rfid.covered': 'terkirim',
   'rfid.note.gate':
     'Gate hanya melaporkan apa yang tertangkap antenanya di tiap interval, jadi tag datang terpencar di beberapa sapuan dan terulang selama masih di area baca. Perubahan berlaku pada sapuan berikutnya — tanpa Terapkan Konfigurasi.',
+  'rfid.label.one': 'Tag hasil pindai — tag baru yang menggantikan tag lama',
+  'rfid.note.replace':
+    'Tarik trigger dan pemindai berhenti, lalu menanyakan tag mana yang digantikan. Penggantian dikirim ke endpoint replace, bukan ke endpoint pemindaian.',
   'rfid.note':
     'Setiap sapuan mengirim seluruh daftar ini sebagai array idHex — satu request per sapuan, bukan satu request per tag. Tidak perlu Terapkan Konfigurasi.',
   'unit.tags': 'tag',

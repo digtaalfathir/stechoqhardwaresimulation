@@ -1,4 +1,5 @@
 import type { ActionDef, ActionState, ConfigField, SimulatorMeta } from '../core/types';
+import { randomEpc } from '../core/wire';
 import { BASE_URLS, TagReader, type TagReaderState } from './tag-reader';
 
 export { BASE_URLS };
@@ -8,6 +9,10 @@ export type { Sender } from './tag-reader';
 export const READER_ID = 'SIMULATOR-01';
 
 export const ENDPOINTS = ['/api/v1/warehouse-management/jmp/log-rfids/components/handheld'];
+export const REPLACE_ENDPOINTS = ['/api/v1/master/register-rfids/replace'];
+
+/** The only two reasons a tag gets replaced on the line. */
+export const REPLACEMENT_REMARKS = ['Tag damaged', 'Tag unreadable'];
 
 /** Known RR types. Duplicates in the source list dropped, order kept. */
 export const RR_TYPES = [
@@ -20,6 +25,8 @@ const ANTENNAS = Array.from({ length: 8 }, (_, i) => String(i + 1));
 
 interface HandheldState extends TagReaderState {
   lastTagCount: number;
+  /** Replacement asks for the old tag before anything is sent. */
+  replacementOpen: boolean;
 }
 
 const DEFAULT_TAGS = [
@@ -89,7 +96,44 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     { key: 'initial_year', label: 'Initial Year', type: 'select', default: '2026', options: YEARS },
     { key: 'antenna', label: 'Antenna', type: 'select', default: '1', options: ANTENNAS },
     { key: 'mode', label: 'Mode', type: 'switch', default: 'wo', options: ['register', 'wo'] },
-    { key: 'opname', label: 'Opname', type: 'checkbox', default: true, hint: 'Sent as a boolean' },
+    {
+      key: 'opname',
+      label: 'Opname',
+      type: 'checkbox',
+      default: true,
+      hint: 'Sent as a boolean',
+      // A replacement is always an opname, so the flag stops being a choice.
+      forcedWhen: { key: 'replacement', equals: true, value: true },
+    },
+    {
+      key: 'replacement',
+      label: 'Replacement',
+      type: 'checkbox',
+      default: false,
+      visibleWhen: { key: 'mode', equals: 'register' },
+      hint: 'Swap one tag for another instead of logging a sweep',
+    },
+    {
+      key: 'replaceEndpoint',
+      label: 'Replace Endpoint',
+      type: 'combo',
+      default: REPLACE_ENDPOINTS[0],
+      options: REPLACE_ENDPOINTS,
+      mono: true,
+      visibleWhen: { key: 'replacement', equals: true },
+      hint: 'Where the replacement is posted',
+    },
+    {
+      key: 'factoryId',
+      label: 'Factory ID',
+      type: 'number',
+      default: 382,
+      min: 0,
+      max: 999999,
+      step: 1,
+      visibleWhen: { key: 'replacement', equals: true },
+      hint: 'Sent as a number',
+    },
     {
       key: 'interval',
       label: 'Scan Interval',
@@ -116,7 +160,19 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
   ];
 
   actionState(id: string): ActionState {
-    const { scanning, sending } = this.state;
+    const { scanning, sending, replacementOpen } = this.state;
+    // A replacement is a single exchange: continuous scanning has no meaning.
+    if (this.replacementActive()) {
+      switch (id) {
+        case 'start-scan':
+        case 'scan-once':
+          return { disabled: replacementOpen || sending };
+        case 'stop-scan':
+          return { disabled: true };
+        default:
+          return {};
+      }
+    }
     switch (id) {
       case 'start-scan':
         return { active: scanning, disabled: scanning };
@@ -133,7 +189,24 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
 
   protected initialState(): HandheldState {
     this.loop = null;
-    return { ...this.baseState(DEFAULT_TAGS), lastTagCount: 0 };
+    return { ...this.baseState(DEFAULT_TAGS), lastTagCount: 0, replacementOpen: false };
+  }
+
+  /** Replacement only exists in register mode, whatever the stored flag says. */
+  replacementActive(): boolean {
+    return this.cfg('mode') === 'register' && this.bool('replacement');
+  }
+
+  /** In replacement mode the list holds exactly one tag: the new one. */
+  newTag(): string {
+    return this.tags()[0] ?? '';
+  }
+
+  replaceUrl(): string {
+    const base = this.cfg('baseUrl').replace(/\/+$/, '');
+    const path = this.cfg('replaceEndpoint');
+    if (!path) return base;
+    return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
   }
 
   protected identity() {
@@ -149,7 +222,8 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
         this.stopScan();
         break;
       case 'scan-once':
-        this.sweep();
+        if (this.replacementActive()) this.openReplacement();
+        else this.sweep();
         break;
     }
   }
@@ -171,6 +245,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
   }
 
   private startScan() {
+    if (this.replacementActive()) return this.openReplacement();
     if (this.state.scanning) return;
     this.status = 'SIMULATING';
     this.setState({ scanning: true });
@@ -196,6 +271,81 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     );
   }
 
+  // --- replacement ----------------------------------------------------------
+
+  /** A trigger pull in replacement mode halts the scan and asks for the old tag. */
+  private openReplacement() {
+    if (this.state.scanning) this.stopScan();
+    if (this.state.replacementOpen) return;
+    this.setState({ replacementOpen: true });
+    const newTag = this.newTag();
+    this.emit(
+      'REPLACEMENT_SCANNED',
+      { new_rfid_number: newTag, factory_id: this.num('factoryId') },
+      {
+        tone: newTag ? 'active' : 'warn',
+        summary: newTag
+          ? `New tag ${newTag} scanned — waiting for the old tag`
+          : 'Scanned tag is empty — enter the new tag first',
+      },
+    );
+  }
+
+  closeReplacement() {
+    if (!this.state.replacementOpen) return;
+    this.setState({ replacementOpen: false });
+    this.emit('REPLACEMENT_CANCELLED', { new_rfid_number: this.newTag() }, {
+      tone: 'neutral',
+      summary: 'Replacement cancelled — nothing was sent',
+    });
+  }
+
+  /** The exact body posted to the replacement endpoint. */
+  buildReplacement(oldTag: string, remark: string) {
+    return {
+      old_rfid_number: oldTag,
+      new_rfid_number: this.newTag(),
+      replacement_remark: remark,
+      factory_id: this.num('factoryId'),
+      opname: this.bool('opname'),
+    };
+  }
+
+  /**
+   * Sends the replacement. Refuses an incomplete form rather than posting a
+   * half-filled body, and leaves the form open when the endpoint rejects it.
+   */
+  async submitReplacement(oldTag: string, remark: string): Promise<boolean> {
+    const old = oldTag.trim();
+    const newTag = this.newTag();
+    if (!old || !newTag || !remark) {
+      this.emit(
+        'REPLACEMENT_INCOMPLETE',
+        { old_rfid_number: old, new_rfid_number: newTag, replacement_remark: remark },
+        { tone: 'warn', summary: 'Replacement needs the old tag, the new tag and a reason' },
+      );
+      return false;
+    }
+    const delivered = await this.dispatch(this.buildReplacement(old, remark), {
+      label: `Replacement ${old} → ${newTag}`,
+      url: this.replaceUrl(),
+      events: { ok: 'REPLACEMENT_SENT', fail: 'REPLACEMENT_FAILED' },
+    });
+    if (delivered) this.setState({ replacementOpen: false });
+    return delivered;
+  }
+
+  /** In replacement mode the generated tag replaces the one in the list. */
+  addRandomTag() {
+    if (!this.replacementActive()) return super.addRandomTag();
+    const idHex = randomEpc();
+    this.setTagsText(idHex);
+    this.emit('TAG_GENERATED', { idHex, tag_count: 1 }, {
+      tone: 'neutral',
+      summary: `New tag ${idHex} ready for replacement`,
+    });
+  }
+
   /** One sweep = one real POST carrying every tag currently in the list. */
   private async sweep() {
     const idHex = this.tags();
@@ -207,7 +357,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       return;
     }
     this.setState({ lastTagCount: idHex.length });
-    await this.dispatch(idHex, this.buildPayload(idHex));
+    await this.dispatch(this.buildPayload(idHex), { label: `${idHex.length} tag(s)` });
   }
 
   samplePayload() {
