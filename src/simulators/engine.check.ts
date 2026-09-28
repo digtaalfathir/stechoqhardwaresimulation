@@ -301,8 +301,13 @@ async function main() {
   assert(!repl.replacementActive(), 'replacement stays off outside register mode');
   assert(repl.bool('opname') === true, 'the replacement flag forces opname on even from a direct patch');
 
-  repl.applyConfig({ mode: 'register', replacement: true, factoryId: 382 });
+  repl.applyConfig({ mode: 'register', replacement: true, factory_code: '382' });
   assert(repl.replacementActive(), 'register mode turns replacement on');
+  assert(repl.factoryId() === 382, 'factory_id is read from the factory code, not a second field');
+  assert(
+    !repl.configFields.some((f) => f.key === 'factoryId' || f.key === 'replaceEndpoint'),
+    'the replace endpoint and factory id are not configuration fields',
+  );
   assert(
     repl.replaceUrl() === 'http://localhost:8000/api/v1/master/register-rfids/replace',
     `the replace endpoint joins onto the base URL (got ${repl.replaceUrl()})`,
@@ -322,7 +327,20 @@ async function main() {
   // An incomplete form is refused, not posted half-filled.
   assert((await repl.submitReplacement('', 'Tag damaged')) === false, 'an empty old tag is refused');
   assert(repl.events[0].name === 'REPLACEMENT_INCOMPLETE', 'the refusal says what is missing');
+  assert(repl.events[0].payload.problem === 'no-old-tag', 'the refusal names the missing piece');
   assert(repl.state.sendCount === beforeOpen, 'a refused form sends nothing');
+  assert(repl.replacementProblem('OLD', 'Tag damaged') === null, 'a complete form reports no problem');
+
+  // A factory code that is not a number would post factory_id: null.
+  repl.applyConfig({ factory_code: 'not-a-number' });
+  assert(
+    repl.replacementProblem('OLD', 'Tag damaged') === 'bad-factory-code',
+    'a non-numeric factory code blocks the replacement',
+  );
+  assert((await repl.submitReplacement('OLD', 'Tag damaged')) === false, 'and it is refused, not sent as null');
+  repl.applyConfig({ factory_code: '' });
+  assert(repl.replacementProblem('OLD', 'Tag damaged') === 'bad-factory-code', 'an empty factory code blocks it too');
+  repl.applyConfig({ factory_code: '382' });
 
   // The real thing.
   assert(await repl.submitReplacement('  E2806894000050367572D095  ', 'Tag damaged'), 'a complete form is sent');
@@ -336,6 +354,7 @@ async function main() {
   assert(replBody.new_rfid_number === 'RFID_NEW_703', 'the new tag comes from the tag list');
   assert(replBody.replacement_remark === 'Tag damaged', 'the reason reaches the body');
   assert(replBody.factory_id === 382 && typeof replBody.factory_id === 'number', 'factory_id is a number');
+  assert(repl.cfg('factory_code') === '382', 'the scan payload keeps the same value as a string');
   assert(replBody.opname === true, 'opname rides along as a boolean');
   assert(repl.events[0].name === 'REPLACEMENT_SENT', 'a delivered replacement is logged as such');
   assert(!repl.state.replacementOpen, 'the form closes once the endpoint accepts it');

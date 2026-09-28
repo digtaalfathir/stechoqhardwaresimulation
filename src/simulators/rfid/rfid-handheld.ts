@@ -9,7 +9,8 @@ export type { Sender } from './tag-reader';
 export const READER_ID = 'SIMULATOR-01';
 
 export const ENDPOINTS = ['/api/v1/warehouse-management/jmp/log-rfids/components/handheld'];
-export const REPLACE_ENDPOINTS = ['/api/v1/master/register-rfids/replace'];
+/** Fixed by the API, not a per-run setting. */
+export const REPLACE_PATH = '/api/v1/master/register-rfids/replace';
 
 /** The only two reasons a tag gets replaced on the line. */
 export const REPLACEMENT_REMARKS = ['Tag damaged', 'Tag unreadable'];
@@ -22,6 +23,16 @@ export const RR_TYPES = [
 
 const YEARS = Array.from({ length: 31 }, (_, i) => String(2000 + i));
 const ANTENNAS = Array.from({ length: 8 }, (_, i) => String(i + 1));
+
+/** What is stopping a replacement from being sent. */
+export type ReplacementProblem = 'no-old-tag' | 'no-new-tag' | 'no-remark' | 'bad-factory-code';
+
+const PROBLEM_SUMMARY: Record<ReplacementProblem, string> = {
+  'no-old-tag': 'the old tag is empty',
+  'no-new-tag': 'the tag list has no new tag',
+  'no-remark': 'no reason was picked',
+  'bad-factory-code': 'Factory Code is not a number',
+};
 
 interface HandheldState extends TagReaderState {
   lastTagCount: number;
@@ -114,27 +125,6 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       hint: 'Swap one tag for another instead of logging a sweep',
     },
     {
-      key: 'replaceEndpoint',
-      label: 'Replace Endpoint',
-      type: 'combo',
-      default: REPLACE_ENDPOINTS[0],
-      options: REPLACE_ENDPOINTS,
-      mono: true,
-      visibleWhen: { key: 'replacement', equals: true },
-      hint: 'Where the replacement is posted',
-    },
-    {
-      key: 'factoryId',
-      label: 'Factory ID',
-      type: 'number',
-      default: 382,
-      min: 0,
-      max: 999999,
-      step: 1,
-      visibleWhen: { key: 'replacement', equals: true },
-      hint: 'Sent as a number',
-    },
-    {
       key: 'interval',
       label: 'Scan Interval',
       type: 'number',
@@ -203,10 +193,29 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
   }
 
   replaceUrl(): string {
-    const base = this.cfg('baseUrl').replace(/\/+$/, '');
-    const path = this.cfg('replaceEndpoint');
-    if (!path) return base;
-    return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+    return `${this.cfg('baseUrl').replace(/\/+$/, '')}${REPLACE_PATH}`;
+  }
+
+  /**
+   * The replace API wants the factory as a number; the scan payload sends the
+   * same value as a string, so it is read from one field rather than two that
+   * could drift apart.
+   */
+  factoryId(): number {
+    return Number(this.cfg('factory_code').trim());
+  }
+
+  /**
+   * Why the replacement cannot be sent yet, as a code the UI translates. One
+   * source of truth: the form disables Submit with it, the device refuses with it.
+   */
+  replacementProblem(oldTag: string, remark: string): ReplacementProblem | null {
+    if (!oldTag.trim()) return 'no-old-tag';
+    if (!this.newTag()) return 'no-new-tag';
+    if (!remark) return 'no-remark';
+    const raw = this.cfg('factory_code').trim();
+    if (!raw || !Number.isFinite(Number(raw))) return 'bad-factory-code';
+    return null;
   }
 
   protected identity() {
@@ -281,7 +290,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     const newTag = this.newTag();
     this.emit(
       'REPLACEMENT_SCANNED',
-      { new_rfid_number: newTag, factory_id: this.num('factoryId') },
+      { new_rfid_number: newTag, factory_id: this.factoryId() },
       {
         tone: newTag ? 'active' : 'warn',
         summary: newTag
@@ -306,7 +315,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       old_rfid_number: oldTag,
       new_rfid_number: this.newTag(),
       replacement_remark: remark,
-      factory_id: this.num('factoryId'),
+      factory_id: this.factoryId(),
       opname: this.bool('opname'),
     };
   }
@@ -317,15 +326,22 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
    */
   async submitReplacement(oldTag: string, remark: string): Promise<boolean> {
     const old = oldTag.trim();
-    const newTag = this.newTag();
-    if (!old || !newTag || !remark) {
+    const problem = this.replacementProblem(old, remark);
+    if (problem) {
       this.emit(
         'REPLACEMENT_INCOMPLETE',
-        { old_rfid_number: old, new_rfid_number: newTag, replacement_remark: remark },
-        { tone: 'warn', summary: 'Replacement needs the old tag, the new tag and a reason' },
+        {
+          old_rfid_number: old,
+          new_rfid_number: this.newTag(),
+          replacement_remark: remark,
+          factory_code: this.cfg('factory_code'),
+          problem,
+        },
+        { tone: 'warn', summary: `Replacement refused — ${PROBLEM_SUMMARY[problem]}` },
       );
       return false;
     }
+    const newTag = this.newTag();
     const delivered = await this.dispatch(this.buildReplacement(old, remark), {
       label: `Replacement ${old} → ${newTag}`,
       url: this.replaceUrl(),

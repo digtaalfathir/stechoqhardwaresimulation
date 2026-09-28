@@ -5,7 +5,11 @@ import type { TransportResponse } from '../simulators/core/types';
 import { Icon } from './icon';
 import { NutrunnerSimulator } from '../simulators/nutrunner/nutrunner';
 import { TagReader } from '../simulators/rfid/tag-reader';
-import { REPLACEMENT_REMARKS, RfidHandheldSimulator } from '../simulators/rfid/rfid-handheld';
+import {
+  REPLACEMENT_REMARKS,
+  RfidHandheldSimulator,
+  type ReplacementProblem,
+} from '../simulators/rfid/rfid-handheld';
 import { DigitalIoSimulator, type ChannelKind } from '../simulators/digital-io/digital-io';
 
 /**
@@ -65,8 +69,21 @@ function ReplacementDialog({ sim }: { sim: RfidHandheldSimulator }) {
 
   const newTag = sim.newTag();
   const busy = sim.state.sending;
-  const ready = oldTag.trim().length > 0 && newTag.length > 0 && !busy;
+  // The device decides what is missing, so the button and the device can never
+  // disagree about whether this form is ready.
+  const problem = sim.replacementProblem(oldTag, remark);
+  const ready = !problem && !busy;
   const response = sim.state.lastResponse;
+
+  const PROBLEM_TEXT: Record<ReplacementProblem, string> = {
+    'no-old-tag': t('repl.problem.old', 'Enter the tag that is being replaced.'),
+    'no-new-tag': t('repl.problem.new', 'The tag list has no new tag — close this and scan one first.'),
+    'no-remark': t('repl.problem.remark', 'Pick a reason.'),
+    'bad-factory-code': t(
+      'repl.problem.factory',
+      'Factory Code must be a number — set it in the configuration, it is sent as factory_id.',
+    ),
+  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -122,6 +139,18 @@ function ReplacementDialog({ sim }: { sim: RfidHandheldSimulator }) {
           </div>
 
           <div className="field">
+            <label>{t('repl.factory', 'Factory ID')}</label>
+            <input
+              className="mono-input readonly-input"
+              value={Number.isFinite(sim.factoryId()) && sim.cfg('factory_code').trim() ? sim.factoryId() : ''}
+              placeholder={t('repl.factory.empty', 'set Factory Code in the configuration')}
+              readOnly
+              tabIndex={-1}
+            />
+            <span className="hint">{t('repl.factory.hint', 'Taken from Factory Code, sent as a number')}</span>
+          </div>
+
+          <div className="field">
             <label htmlFor="repl-remark">{t('repl.remark', 'Reason')}</label>
             <select id="repl-remark" value={remark} onChange={(e) => setRemark(e.target.value)}>
               {REPLACEMENT_REMARKS.map((r) => (
@@ -137,6 +166,9 @@ function ReplacementDialog({ sim }: { sim: RfidHandheldSimulator }) {
               {response.error ?? `${response.status} ${response.statusText} — ${response.message}`}
             </p>
           )}
+          {problem && problem !== 'no-old-tag' && (
+            <p className="modal-hint">{PROBLEM_TEXT[problem]}</p>
+          )}
         </div>
 
         <div className="modal-foot">
@@ -144,7 +176,12 @@ function ReplacementDialog({ sim }: { sim: RfidHandheldSimulator }) {
           <button type="button" className="btn" onClick={() => sim.closeReplacement()} disabled={busy}>
             {t('repl.cancel', 'Cancel')}
           </button>
-          <button type="submit" className="btn btn-primary" disabled={!ready}>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={!ready}
+            title={problem ? PROBLEM_TEXT[problem] : undefined}
+          >
             {busy ? t('repl.sending', 'Sending…') : t('repl.submit', 'Submit Replacement')}
           </button>
         </div>
