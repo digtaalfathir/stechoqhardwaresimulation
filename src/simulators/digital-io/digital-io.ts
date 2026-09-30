@@ -1,6 +1,6 @@
 import { Simulator } from '../core/simulator';
-import type { ActionDef, ConfigField, SimulatorMeta, StateRow, TransportFrame } from '../core/types';
-import { httpPost, modbusWrite, mqttPublish } from '../core/wire';
+import type { ActionDef, ConfigField, SimulatorMeta, StateRow, Tone, TransportFrame } from '../core/types';
+import { modbusWrite, mqttPublish } from '../core/wire';
 
 export type ChannelKind = 'DI' | 'DO';
 
@@ -25,7 +25,7 @@ export class DigitalIoSimulator extends Simulator<DioState> {
     icon: 'io',
     tagline: 'Discrete input / output block with per-channel toggles and change events.',
     description:
-      'Simulates a discrete I/O module: toggle any input or output and watch the change notification your backend would receive. The same model covers an ESP32 board, a W5500 module or a Modbus TCP coupler — only the transport differs.',
+      'Simulates a discrete I/O module: toggle any input or output and watch the change notification your backend receives. The same model covers an ESP32 board, a W5500 module or a Modbus TCP coupler — only the transport differs. On REST the change is really posted to your endpoint and the response is shown; Modbus and MQTT frames are generated, because a browser cannot open those sockets.',
     protocols: ['Modbus TCP', 'REST', 'MQTT'],
   };
 
@@ -33,10 +33,42 @@ export class DigitalIoSimulator extends Simulator<DioState> {
     { key: 'deviceId', label: 'Device ID', type: 'text', default: 'DIO-01', mono: true },
     { key: 'channels', label: 'Channel Count', type: 'select', default: '8', options: ['4', '8', '16'], hint: 'Inputs and outputs per block' },
     { key: 'transport', label: 'Transport', type: 'select', default: 'Modbus TCP', options: ['Modbus TCP', 'REST', 'MQTT'] },
-    { key: 'ip', label: 'IP Address', type: 'text', default: '192.168.1.60', mono: true },
-    { key: 'port', label: 'Port', type: 'number', default: 502, min: 1, max: 65535, step: 1 },
-    { key: 'endpoint', label: 'REST Endpoint', type: 'text', default: 'http://localhost:3000/api/io/state', mono: true, hint: 'Used when transport is REST' },
-    { key: 'topic', label: 'MQTT Topic', type: 'text', default: 'factory/line1/io/DIO-01', mono: true, hint: 'Used when transport is MQTT' },
+    {
+      key: 'ip',
+      label: 'IP Address',
+      type: 'text',
+      default: '192.168.1.60',
+      mono: true,
+      visibleWhen: { key: 'transport', equals: 'Modbus TCP' },
+    },
+    {
+      key: 'port',
+      label: 'Port',
+      type: 'number',
+      default: 502,
+      min: 1,
+      max: 65535,
+      step: 1,
+      visibleWhen: { key: 'transport', equals: 'Modbus TCP' },
+    },
+    {
+      key: 'endpoint',
+      label: 'REST Endpoint',
+      type: 'text',
+      default: 'http://localhost:3000/api/io/state',
+      mono: true,
+      visibleWhen: { key: 'transport', equals: 'REST' },
+      hint: 'Each change is really posted here',
+    },
+    {
+      key: 'topic',
+      label: 'MQTT Topic',
+      type: 'text',
+      default: 'factory/line1/io/DIO-01',
+      mono: true,
+      visibleWhen: { key: 'transport', equals: 'MQTT' },
+      hint: 'Frame is generated, not published',
+    },
   ];
 
   readonly actions: ActionDef[] = [
@@ -109,26 +141,55 @@ export class DigitalIoSimulator extends Simulator<DioState> {
       value: to ? 1 : 0,
       timestamp: new Date().toISOString(),
     };
-    this.emit(kind === 'DI' ? 'DI_CHANGED' : 'DO_CHANGED', payload, {
-      tone: to ? 'ok' : 'neutral',
-      summary: `${channel} changed: ${payload.from} → ${payload.to}`,
+    this.report(
+      kind === 'DI' ? 'DI_CHANGED' : 'DO_CHANGED',
+      payload,
+      `${channel} changed: ${payload.from} → ${payload.to}`,
+      to ? 'ok' : 'neutral',
       // Modbus: inputs live in the discrete-input table, outputs are coils.
-      transport: this.frame(payload, {
+      {
         fn: kind === 'DI' ? 'FC02 Read Discrete Inputs' : 'FC05 Write Single Coil',
         address: (kind === 'DI' ? 10001 : 1) + index,
         value: to ? 1 : 0,
-      }),
-    });
+      },
+    );
   }
 
-  /** Same change, framed for whichever transport the module is configured with. */
+  restMode(): boolean {
+    return this.cfg('transport') === 'REST';
+  }
+
+  /**
+   * On REST the change is a real request, so the outcome comes from the server.
+   * The other transports need a socket a browser does not have, so their frames
+   * are generated and the event says what would have gone out.
+   */
+  private report(
+    name: string,
+    payload: Record<string, unknown>,
+    summary: string,
+    tone: Tone,
+    modbus: { fn: string; address: number; value: number },
+  ) {
+    if (this.restMode()) {
+      // A toggle is a click: never drop it just because another is in flight.
+      void this.dispatch(payload, {
+        label: summary,
+        url: this.cfg('endpoint'),
+        events: { ok: name, fail: 'IO_SEND_FAILED' },
+        coalesce: false,
+      });
+      return;
+    }
+    this.emit(name, payload, { tone, summary, transport: this.frame(payload, modbus) });
+  }
+
+  /** The frame a non-REST transport would have put on the wire. */
   private frame(
     payload: Record<string, unknown>,
     modbus: { fn: string; address: number; value: number },
   ): TransportFrame {
-    const transport = this.cfg('transport');
-    if (transport === 'REST') return httpPost(this.cfg('endpoint'), payload);
-    if (transport === 'MQTT') return mqttPublish(this.cfg('topic'), payload);
+    if (this.cfg('transport') === 'MQTT') return mqttPublish(this.cfg('topic'), payload);
     return modbusWrite(this.cfg('ip'), this.num('port'), modbus.fn, modbus.address, modbus.value);
   }
 
@@ -145,15 +206,13 @@ export class DigitalIoSimulator extends Simulator<DioState> {
       inputs: this.wordOf(after),
       timestamp: new Date().toISOString(),
     };
-    this.emit('DI_BULK_CHANGED', payload, {
-      tone: 'active',
-      summary: changed.length ? `${changed.length} input(s) changed` : 'Inputs unchanged',
-      transport: this.frame(payload, {
-        fn: `FC02 Read Discrete Inputs ×${after.length}`,
-        address: 10001,
-        value: this.wordValue(after),
-      }),
-    });
+    this.report(
+      'DI_BULK_CHANGED',
+      payload,
+      changed.length ? `${changed.length} input(s) changed` : 'Inputs unchanged',
+      'active',
+      { fn: `FC02 Read Discrete Inputs ×${after.length}`, address: 10001, value: this.wordValue(after) },
+    );
   }
 
   private pulseOutput() {
@@ -173,14 +232,10 @@ export class DigitalIoSimulator extends Simulator<DioState> {
       outputs: this.wordOf(this.state.outputs),
       timestamp: new Date().toISOString(),
     };
-    this.emit('DO_ALL_CLEARED', payload, {
-      tone: 'warn',
-      summary: 'All outputs dropped to OFF',
-      transport: this.frame(payload, {
-        fn: `FC15 Write Multiple Coils ×${before.length}`,
-        address: 1,
-        value: 0,
-      }),
+    this.report('DO_ALL_CLEARED', payload, 'All outputs dropped to OFF', 'warn', {
+      fn: `FC15 Write Multiple Coils ×${before.length}`,
+      address: 1,
+      value: 0,
     });
   }
 
@@ -205,7 +260,18 @@ export class DigitalIoSimulator extends Simulator<DioState> {
       { label: 'Input Word', value: this.wordOf(this.state.inputs), mono: true },
       { label: 'Output Word', value: this.wordOf(this.state.outputs), mono: true },
       { label: 'Transitions', value: String(this.state.changes), mono: true },
-      { label: 'Transport', value: `${this.cfg('transport')} · ${this.cfg('ip')}:${this.num('port')}`, mono: true },
+      {
+        label: 'Transport',
+        value: this.restMode()
+          ? `REST · ${this.cfg('endpoint')}`
+          : `${this.cfg('transport')} · ${this.cfg('ip')}:${this.num('port')}`,
+        mono: true,
+      },
+      {
+        label: 'Reporting',
+        value: this.restMode() ? 'REALLY SENT' : 'FRAME GENERATED',
+        tone: this.restMode() ? 'ok' : 'neutral',
+      },
     ];
   }
 

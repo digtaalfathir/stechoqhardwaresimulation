@@ -35,9 +35,13 @@ are needed and deep links survive a hard refresh. There is no backend: the app i
 | RFID Handheld Scanner       | `rfid-handheld` | REST — really sent                   |
 | RFID Reader (fixed gate)    | `rfid-reader`   | REST — really sent                   |
 | Nutrunner / Tightening Tool | `nutrunner`     | Open Protocol — telegrams generated  |
+| Digital I/O Controller      | `digital-io`    | REST — really sent · Modbus / MQTT — generated |
 
-Both RFID devices **really send** their payload to the configured endpoint and report the response —
-status, message and timing — so a failure on screen is a real one (rejected, unreachable, or CORS).
+Everything that speaks REST — both RFID readers, and the I/O block when its transport is REST —
+**really sends** its payload to the configured endpoint and reports the response: status, message and
+timing. A failure on screen is a real one (rejected, unreachable, or CORS). Sending lives in the base
+`Simulator`, so any device reports its traffic the same way and the send-result panel works for all
+of them.
 
 The nutrunner speaks **Open Protocol**: a MID 0001/0002 handshake and a MID 0060 subscribe when the
 configuration is applied, then a byte-accurate MID 0061 revision 1 telegram per fastening, a MID 0062
@@ -47,8 +51,8 @@ consumer's parser can be checked against them byte for byte. Telegram building a
 [src/simulators/nutrunner/open-protocol.ts](src/simulators/nutrunner/open-protocol.ts); `npm run check`
 asserts the declared length, every field offset and the torque x100 encoding.
 
-Devices still in the catalog but not implemented (Digital I/O, Industrial Camera, PLC, REST API
-Device, TCP Device) appear as planned rows in the explorer.
+Devices still in the catalog but not implemented (Industrial Camera, PLC, REST API Device, TCP
+Device) appear as planned rows in the explorer.
 
 ## Layout
 

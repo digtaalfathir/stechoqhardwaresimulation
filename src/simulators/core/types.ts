@@ -102,6 +102,23 @@ export interface TransportFrame {
   response?: TransportResponse;
 }
 
+/** Sends a request for real. Swapped out in tests so they never touch a network. */
+export type Sender = (url: string, body: unknown) => Promise<TransportResponse>;
+
+/** What a device has actually put on the network, for the send-result panel. */
+export interface Transmission {
+  /** A request is in flight right now. */
+  sending: boolean;
+  sent: number;
+  delivered: number;
+  failed: number;
+  /** Interval fired while the previous request was still going. */
+  skipped: number;
+  lastResponse: TransportResponse | null;
+  lastUrl: string | null;
+  lastAt: string | null;
+}
+
 export interface SimEvent {
   seq: number;
   name: string;

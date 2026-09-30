@@ -3,6 +3,7 @@ import type { Category, PlannedSimulator } from './core/types';
 import { RfidHandheldSimulator } from './rfid/rfid-handheld';
 import { RfidReaderSimulator } from './rfid/rfid-reader';
 import { NutrunnerSimulator } from './nutrunner/nutrunner';
+import { DigitalIoSimulator } from './digital-io/digital-io';
 
 export type AnySimulator = Simulator<any>;
 
@@ -16,6 +17,7 @@ export const simulators: AnySimulator[] = [
   new RfidHandheldSimulator(),
   new RfidReaderSimulator(),
   new NutrunnerSimulator(),
+  new DigitalIoSimulator(),
 ];
 
 export function getSimulator(id: string | undefined): AnySimulator | undefined {
@@ -32,7 +34,6 @@ export const CATEGORIES: Category[] = [
 
 /** Declared in the catalog, not implemented yet. Shown as locked cards. */
 export const plannedSimulators: PlannedSimulator[] = [
-  { id: 'digital-io', name: 'Digital I/O Controller', category: 'Industrial Tools', icon: 'io', tagline: 'Discrete input / output block with per-channel toggles and change events.' },
   { id: 'industrial-camera', name: 'Industrial Camera', category: 'Vision', icon: 'camera', tagline: 'Trigger, exposure and image metadata.' },
   { id: 'plc', name: 'PLC', category: 'Factory Devices', icon: 'cpu', tagline: 'Tag table, scan cycle and register access.' },
   { id: 'rest-device', name: 'REST API Device', category: 'Communication', icon: 'braces', tagline: 'Generic device exposed over HTTP.' },

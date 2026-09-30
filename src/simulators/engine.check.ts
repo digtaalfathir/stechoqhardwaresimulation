@@ -47,15 +47,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   // --- registry contract ---
-  assert(simulators.length === 3, 'registry exposes the live devices');
+  assert(simulators.length === 4, 'registry exposes the live devices');
   assert(
-    simulators.map((s) => s.meta.id).join(',') === 'rfid-handheld,rfid-reader,nutrunner',
-    'the live devices are the two readers and the nutrunner',
+    simulators.map((s) => s.meta.id).join(',') === 'rfid-handheld,rfid-reader,nutrunner,digital-io',
+    'the live devices are the two readers, the nutrunner and the I/O block',
   );
-  for (const hidden of ['digital-io']) {
-    assert(getSimulator(hidden) === undefined, `${hidden} is not live`);
-    assert(plannedSimulators.some((p) => p.id === hidden), `${hidden} is listed as planned`);
-  }
+  assert(
+    !plannedSimulators.some((p) => p.id === 'digital-io'),
+    'a live device is no longer listed as planned',
+  );
   assert(new Set(simulators.map((s) => s.meta.id)).size === simulators.length, 'simulator ids are unique');
   const allIds = [...simulators.map((s) => s.meta.id), ...plannedSimulators.map((s) => s.id)];
   assert(new Set(allIds).size === allIds.length, 'catalog ids do not collide with live ids');
@@ -91,6 +91,7 @@ async function main() {
   const offlineDio = new DigitalIoSimulator();
   offlineDio.toggle('DI', 0);
   assert(!offlineDio.state.inputs[0], 'an offline I/O channel cannot be toggled from the grid');
+  assert(offlineDio.transmission.sent === 0, 'and it sends nothing');
 
   // --- config validation is the trust boundary ---
   const rfid = new RfidHandheldSimulator();
@@ -189,8 +190,8 @@ async function main() {
   assert(scan!.transport!.detail.includes('201 Created'), 'the frame shows the response line');
   assert(scan!.transport!.detail.includes('log saved'), 'the frame shows the response message');
   assert(scan!.summary?.includes('201 Created'), 'the event summary states the outcome');
-  assert(rfid.state.okCount === 1 && rfid.state.failCount === 0, 'a delivered send counts as delivered');
-  assert(rfid.state.lastResponse?.message === 'log saved', 'the response is kept for the result panel');
+  assert(rfid.transmission.delivered === 1 && rfid.transmission.failed === 0, 'a delivered send counts as delivered');
+  assert(rfid.transmission.lastResponse?.message === 'log saved', 'the response is kept for the result panel');
   assert(
     scan!.transport!.detail.includes('POST /api/v1/warehouse-management/jmp/log-rfids/components/handheld'),
     'the frame posts to the configured endpoint path',
@@ -208,15 +209,15 @@ async function main() {
   assert(rfid.events[0].name === 'SCAN_NO_TAG', 'an empty tag list sends nothing and says so');
 
   rfid.setTagsText('AAAA\nBBBB');
-  const sentBefore = rfid.state.sendCount;
+  const sentBefore = rfid.transmission.sent;
   const seqBefore = rfid.events[0].seq;
   rfid.run('start-scan');
   assert(rfid.status === 'SIMULATING', 'continuous scanning reports SIMULATING');
-  assert(rfid.state.sendCount === sentBefore + 1, 'starting a scan sends immediately, without waiting an interval');
+  assert(rfid.transmission.sent === sentBefore + 1, 'starting a scan sends immediately, without waiting an interval');
   await sleep(30);
   await sleep(520);
   rfid.run('stop-scan');
-  const sentWhileScanning = rfid.state.sendCount;
+  const sentWhileScanning = rfid.transmission.sent;
   assert(sentWhileScanning >= sentBefore + 3, `the scan loop keeps sending (got ${sentWhileScanning - sentBefore})`);
   assert(rfid.status === 'CONNECTED', 'stopping the scan returns to CONNECTED');
   const sweeps = rfid.events.filter((e) => e.name === 'RFID_SENT' && e.seq > seqBefore);
@@ -226,7 +227,7 @@ async function main() {
     'every sweep in a run carries the same tag list',
   );
   await sleep(320);
-  assert(rfid.state.sendCount === sentWhileScanning, 'stopping the scan clears the interval');
+  assert(rfid.transmission.sent === sentWhileScanning, 'stopping the scan clears the interval');
 
   // --- failure is reported, not swallowed ---
   rfid.sender = async () => rejected;
@@ -235,15 +236,15 @@ async function main() {
   assert(rfid.events[0].name === 'RFID_SEND_FAILED', 'a rejected send produces RFID_SEND_FAILED');
   assert(rfid.events[0].tone === 'error', 'a rejected send is logged as an error');
   assert(rfid.events[0].summary?.includes('422'), 'the summary carries the rejection status');
-  assert(rfid.state.failCount === 1, 'a rejected send counts as failed');
-  assert(rfid.state.lastResponse?.message === 'rr_type is required', "the server's own message is kept");
+  assert(rfid.transmission.failed === 1, 'a rejected send counts as failed');
+  assert(rfid.transmission.lastResponse?.message === 'rr_type is required', "the server's own message is kept");
 
   rfid.sender = async () => blocked;
   rfid.run('scan-once');
   await sleep(30);
   assert(rfid.events[0].name === 'RFID_SEND_FAILED', 'a blocked request also fails loudly');
-  assert(rfid.state.lastResponse?.error?.includes('blocked'), 'a blocked request explains itself');
-  assert(rfid.state.lastResponse?.status === 0, 'a blocked request has no status code');
+  assert(rfid.transmission.lastResponse?.error?.includes('blocked'), 'a blocked request explains itself');
+  assert(rfid.transmission.lastResponse?.status === 0, 'a blocked request has no status code');
   assert(
     rfid.events[0].transport!.detail.includes('--- no response ---'),
     'the frame says plainly that no response arrived',
@@ -257,10 +258,10 @@ async function main() {
     });
   rfid.run('scan-once');
   await sleep(10);
-  const skippedBefore = rfid.state.skipped;
+  const skippedBefore = rfid.transmission.skipped;
   rfid.run('scan-once');
   await sleep(10);
-  assert(rfid.state.skipped === skippedBefore + 1, 'a second sweep is skipped while one is still in flight');
+  assert(rfid.transmission.skipped === skippedBefore + 1, 'a second sweep is skipped while one is still in flight');
   release!();
   await sleep(20);
   rfid.sender = async () => accepted;
@@ -283,8 +284,8 @@ async function main() {
   await sleep(30);
 
   rfid.run('reset');
-  assert(rfid.state.sendCount === 0 && !rfid.state.scanning, 'reset clears device state');
-  assert(rfid.state.okCount === 0 && rfid.state.failCount === 0, 'reset clears the delivery counters');
+  assert(rfid.transmission.sent === 0 && !rfid.state.scanning, 'reset clears device state');
+  assert(rfid.transmission.delivered === 0 && rfid.transmission.failed === 0, 'reset clears the delivery counters');
   assert(rfid.cfg('maker_name') === 'check', 'reset keeps the applied configuration');
   assert(rfid.events[0].name === 'DEVICE_RESET', 'reset is logged');
 
@@ -315,12 +316,12 @@ async function main() {
 
   // A trigger pull halts the scan and asks for the old tag instead of sending.
   repl.setTagsText('RFID_NEW_703');
-  const beforeOpen = repl.state.sendCount;
+  const beforeOpen = repl.transmission.sent;
   repl.run('start-scan');
   await sleep(20);
   assert(repl.state.replacementOpen, 'a trigger pull opens the replacement form');
   assert(!repl.state.scanning, 'the scanner stops when the form opens');
-  assert(repl.state.sendCount === beforeOpen, 'nothing is sent before the form is filled in');
+  assert(repl.transmission.sent === beforeOpen, 'nothing is sent before the form is filled in');
   assert(repl.events[0].name === 'REPLACEMENT_SCANNED', 'the scan is logged as a replacement capture');
   assert(repl.actionState('stop-scan').disabled === true, 'continuous scanning is meaningless here');
 
@@ -328,7 +329,7 @@ async function main() {
   assert((await repl.submitReplacement('', 'Tag damaged')) === false, 'an empty old tag is refused');
   assert(repl.events[0].name === 'REPLACEMENT_INCOMPLETE', 'the refusal says what is missing');
   assert(repl.events[0].payload.problem === 'no-old-tag', 'the refusal names the missing piece');
-  assert(repl.state.sendCount === beforeOpen, 'a refused form sends nothing');
+  assert(repl.transmission.sent === beforeOpen, 'a refused form sends nothing');
   assert(repl.replacementProblem('OLD', 'Tag damaged') === null, 'a complete form reports no problem');
 
   // A factory code that is not a number would post factory_id: null.
@@ -375,10 +376,10 @@ async function main() {
   repl.sender = async () => accepted;
   repl.applyConfig({ mode: 'wo', replacement: false });
   repl.setTagsText('AAAA\nBBBB');
-  const sweepBefore = repl.state.sendCount;
+  const sweepBefore = repl.transmission.sent;
   repl.run('scan-once');
   await sleep(30);
-  assert(repl.state.sendCount === sweepBefore + 1, 'a normal sweep still sends');
+  assert(repl.transmission.sent === sweepBefore + 1, 'a normal sweep still sends');
   assert(repl.events[0].name === 'RFID_SENT', 'a normal sweep is still an RFID_SENT');
   assert(!repl.state.replacementOpen, 'no form appears outside replacement mode');
   repl.clearTimers();
@@ -614,6 +615,8 @@ async function main() {
   assert(change.summary === 'DI02 changed: OFF → ON', `the log line reads like the spec (got ${change.summary})`);
   assert(change.payload.channel === 'DI02' && change.payload.value === 1, 'the payload identifies the channel');
   assert(change.transport?.summary.includes('10002'), 'inputs map to the discrete-input table');
+  assert(change.transport!.live !== true, 'a Modbus frame is generated, never claimed as sent');
+  assert(dio.transmission.sent === 0, 'Modbus puts nothing on the network');
   dio.toggle('DO', 2);
   assert(dio.events[0].transport?.summary.includes('FC05'), 'outputs map to a coil write');
   assert(dio.stateRows().some((r) => r.label === 'Output Word' && r.value === '0x0004'), 'the output register word packs bit 2');
@@ -631,6 +634,62 @@ async function main() {
   dio.applyConfig({ transport: 'MQTT' });
   dio.toggle('DI', 0);
   assert(dio.events[0].transport?.protocol === 'MQTT', 'the transport setting selects the frame builder');
+  assert(dio.transmission.sent === 0, 'MQTT is generated too');
+
+  // --- digital i/o over REST really sends ---
+  const rest = new DigitalIoSimulator();
+  const posted: { url: string; body: Record<string, unknown> }[] = [];
+  rest.sender = async (url, body) => {
+    posted.push({ url, body: body as Record<string, unknown> });
+    return accepted;
+  };
+  rest.applyConfig({ channels: '4', transport: 'REST', endpoint: 'http://localhost:8123/api/io/state' });
+  assert(rest.restMode(), 'REST transport is recognised');
+  assert(
+    rest.configFields.find((f) => f.key === 'endpoint')?.visibleWhen?.equals === 'REST',
+    'the endpoint field only shows for REST',
+  );
+
+  rest.toggle('DO', 2);
+  await sleep(30);
+  assert(posted.length === 1, 'a toggle on REST is really sent');
+  assert(posted[0].url === 'http://localhost:8123/api/io/state', 'it goes to the configured endpoint');
+  assert(
+    JSON.stringify(Object.keys(posted[0].body)) ===
+      JSON.stringify(['device_id', 'channel', 'direction', 'from', 'to', 'value', 'timestamp']),
+    `the change payload carries the agreed keys (got ${Object.keys(posted[0].body)})`,
+  );
+  assert(posted[0].body.channel === 'DO03' && posted[0].body.value === 1, 'the toggled channel reaches the body');
+  assert(rest.events[0].name === 'DO_CHANGED', 'a delivered change keeps its own event name');
+  assert(rest.events[0].summary?.includes('201 Created'), 'the summary carries the response');
+  assert(rest.events[0].transport?.live === true, 'the frame is marked as really sent');
+  assert(rest.transmission.delivered === 1 && rest.transmission.failed === 0, 'the counters follow the response');
+
+  // Clicks must never be dropped, even while another request is in flight.
+  let releaseIo: (() => void) | null = null;
+  rest.sender = () =>
+    new Promise((resolve) => {
+      releaseIo = () => resolve(accepted);
+    });
+  rest.toggle('DI', 0);
+  rest.toggle('DI', 1);
+  await sleep(20);
+  assert(rest.transmission.sent === 3, 'a second toggle is not coalesced away');
+  assert(rest.transmission.skipped === 0, 'nothing was skipped');
+  releaseIo!();
+  await sleep(30);
+
+  // A rejected change says so instead of looking like a success.
+  rest.sender = async () => rejected;
+  rest.toggle('DO', 0);
+  await sleep(30);
+  assert(rest.events[0].name === 'IO_SEND_FAILED', 'a rejected change is logged as a failure');
+  assert(rest.transmission.failed === 1, 'the failure is counted');
+  assert(rest.state.outputs[0] === true, 'the channel still moved — the module changed, the report did not land');
+
+  rest.run('reset');
+  assert(rest.transmission.sent === 0 && rest.transmission.failed === 0, 'reset clears the transmission record');
+  rest.clearTimers();
 
   // --- shared engine behaviour ---
   const probe = new DigitalIoSimulator();
@@ -650,9 +709,9 @@ async function main() {
   spinner.applyConfig({ interval: 200 });
   spinner.run('start-scan');
   spinner.clearTimers();
-  const parked = spinner.state.sendCount;
+  const parked = spinner.transmission.sent;
   await sleep(450);
-  assert(spinner.state.sendCount === parked, 'clearTimers stops every device timer');
+  assert(spinner.transmission.sent === parked, 'clearTimers stops every device timer');
 
   // --- wire builders ---
   const frame = httpPost('http://example.test:8080/api/x?y=1', { a: 1 });

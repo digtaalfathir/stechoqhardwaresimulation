@@ -178,6 +178,8 @@ const ID: Record<string, string> = {
   'io.outputs': 'Output',
   'io.of': 'dari',
   'io.toggle': 'Ubah',
+  'io.note.rest':
+    'Input memodelkan sinyal lapangan (sensor, tombol); output memodelkan beban yang digerakkan (katup, lampu). Setiap transisi benar-benar dikirim ke endpoint REST, dan responsnya ditampilkan di atas.',
   'io.note':
     'Input memodelkan sinyal lapangan (sensor, tombol); output memodelkan beban yang digerakkan (katup, lampu). Setiap transisi dicatat dan dibingkai untuk transport yang dikonfigurasi.',
 
@@ -249,7 +251,7 @@ const ID: Record<string, string> = {
     'Mensimulasikan kontroler pengencang yang berbicara Open Protocol: ramp torsi dan sudut menuju target, dinilai per batas persis seperti kontroler sungguhan, lalu dilaporkan sebagai telegram MID 0061 yang akurat byte demi byte di dalam sesi sungguhan (handshake MID 0001/0002, subscribe MID 0060, acknowledge MID 0062). NG paksa, torsi terlalu rendah atau tinggi, dan alarm alat hanya berjarak satu klik. Telegram dibuat untuk diperiksa — browser tidak bisa membuka socket TCP ke port 4545.',
   'sim.digital-io.tagline': 'Blok input / output diskret dengan sakelar per kanal dan event perubahan.',
   'sim.digital-io.description':
-    'Mensimulasikan modul I/O diskret: ubah input atau output mana pun dan amati notifikasi perubahan yang akan diterima backend Anda. Model yang sama mencakup board ESP32, modul W5500, atau coupler Modbus TCP — yang berbeda hanya transport-nya.',
+    'Mensimulasikan modul I/O diskret: ubah input atau output mana pun dan amati notifikasi perubahan yang diterima backend Anda. Model yang sama mencakup board ESP32, modul W5500, atau coupler Modbus TCP — yang berbeda hanya transport-nya. Pada REST perubahan benar-benar dikirim ke endpoint Anda dan responsnya ditampilkan; frame Modbus dan MQTT hanya dibuat, karena browser tidak bisa membuka socket tersebut.',
   'sim.rfid-reader.tagline':
     'Gate reader tetap yang mengirim batch tag secara parsial dan tumpang tindih pada tiap interval.',
   'sim.rfid-reader.description':
@@ -275,7 +277,7 @@ const ID: Record<string, string> = {
     'Stechoq Hardware Simulation adalah laboratorium perangkat keras virtual. Setiap simulator mereproduksi tiga hal dari perangkat fisik: statusnya, aksinya, dan komunikasinya. Antarmuka hanyalah cara Anda mengendalikan dan mengamati simulasi itu — mesin simulasinya sendiri tidak tahu-menahu soal adanya UI.',
   'docs.callout.title': 'Mana yang benar-benar dikirim, mana yang hanya dibuat.',
   'docs.callout.text':
-    'Kedua perangkat RFID mengirim payload-nya sungguhan ke endpoint yang Anda konfigurasi, lalu menampilkan responsnya — status, pesan, dan waktu. Telegram Open Protocol milik nutrunner serta frame TCP, Modbus, dan MQTT hanya dibuat untuk diperiksa, karena browser tidak bisa membuka socket tersebut. Versi sungguhan dari transport itu ada di peta jalan.',
+    'Apa pun yang berbicara REST — kedua reader RFID, dan blok I/O saat transport-nya REST — mengirim payload-nya sungguhan ke endpoint yang Anda konfigurasi lalu menampilkan responsnya: status, pesan, dan waktu. Telegram Open Protocol milik nutrunner serta frame TCP, Modbus, dan MQTT hanya dibuat untuk diperiksa, karena browser tidak bisa membuka socket tersebut. Versi sungguhan dari transport itu ada di peta jalan.',
   'docs.use.title': 'Menggunakan simulator',
   'docs.use.1': 'Buka sebuah perangkat dari katalog.',
   'docs.use.2':

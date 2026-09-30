@@ -1,6 +1,6 @@
 import type { ActionDef, ActionState, ConfigField, SimulatorMeta } from '../core/types';
 import { randomEpc } from '../core/wire';
-import { BASE_URLS, TagReader, type TagReaderState } from './tag-reader';
+import { BASE_URLS, RFID_EVENTS, TagReader, type TagReaderState } from './tag-reader';
 
 export { BASE_URLS };
 export type { Sender } from './tag-reader';
@@ -150,13 +150,13 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
   ];
 
   actionState(id: string): ActionState {
-    const { scanning, sending, replacementOpen } = this.state;
+    const { scanning, replacementOpen } = this.state;
     // A replacement is a single exchange: continuous scanning has no meaning.
     if (this.replacementActive()) {
       switch (id) {
         case 'start-scan':
         case 'scan-once':
-          return { disabled: replacementOpen || sending };
+          return { disabled: replacementOpen || this.transmission.sending };
         case 'stop-scan':
           return { disabled: true };
         default:
@@ -169,7 +169,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       case 'stop-scan':
         return { disabled: !scanning };
       case 'scan-once':
-        return { active: sending && !scanning, disabled: scanning || sending };
+        return { active: this.transmission.sending && !scanning, disabled: scanning || this.transmission.sending };
       default:
         return {};
     }
@@ -275,7 +275,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     this.setState({ scanning: false });
     this.emit(
       'SCAN_STOPPED',
-      { reader_id: READER_ID, payloads_sent: this.state.sendCount },
+      { reader_id: READER_ID, payloads_sent: this.transmission.sent },
       { tone: 'neutral', summary: 'Continuous scan stopped' },
     );
   }
@@ -346,6 +346,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       label: `Replacement ${old} → ${newTag}`,
       url: this.replaceUrl(),
       events: { ok: 'REPLACEMENT_SENT', fail: 'REPLACEMENT_FAILED' },
+      coalesce: false,
     });
     if (delivered) this.setState({ replacementOpen: false });
     return delivered;
@@ -373,7 +374,11 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       return;
     }
     this.setState({ lastTagCount: idHex.length });
-    await this.dispatch(this.buildPayload(idHex), { label: `${idHex.length} tag(s)` });
+    await this.dispatch(this.buildPayload(idHex), {
+      label: `${idHex.length} tag(s)`,
+      url: this.url(),
+      events: RFID_EVENTS,
+    });
   }
 
   samplePayload() {

@@ -68,12 +68,12 @@ function ReplacementDialog({ sim }: { sim: RfidHandheldSimulator }) {
   }, [sim]);
 
   const newTag = sim.newTag();
-  const busy = sim.state.sending;
+  const busy = sim.transmission.sending;
   // The device decides what is missing, so the button and the device can never
   // disagree about whether this form is ready.
   const problem = sim.replacementProblem(oldTag, remark);
   const ready = !problem && !busy;
-  const response = sim.state.lastResponse;
+  const response = sim.transmission.lastResponse;
 
   const PROBLEM_TEXT: Record<ReplacementProblem, string> = {
     'no-old-tag': t('repl.problem.old', 'Enter the tag that is being replaced.'),
@@ -209,9 +209,9 @@ function explainError(res: TransportResponse, t: Translate): string {
  * The answer to "did it go through?" — verdict first, then the status line, the
  * server's own message, and where it went.
  */
-function SendResult({ sim }: { sim: TagReader }) {
+function SendResult({ sim }: { sim: AnySimulator }) {
   const t = useT();
-  const { sending, lastResponse: res, lastUrl, lastSentAt } = sim.state;
+  const { sending, lastResponse: res, lastUrl, lastAt } = sim.transmission;
 
   const verdict = sending
     ? { tone: 'active', label: t('send.sending', 'SENDING…') }
@@ -226,13 +226,18 @@ function SendResult({ sim }: { sim: TagReader }) {
       <div className="panel-head">
         <span className="panel-title">{t('send.title', 'Send Result')}</span>
         <div className="spacer" />
-        <span className="chip t-ok">{sim.state.okCount} {t('send.delivered', 'delivered')}</span>
-        <span className={`chip${sim.state.failCount ? ' t-error' : ''}`}>
-          {sim.state.failCount} {t('send.failed', 'failed')}
+        <span className="chip t-ok">
+          {sim.transmission.delivered} {t('send.delivered', 'delivered')}
         </span>
-        {sim.state.skipped > 0 && (
-          <span className="chip t-warn" title={t('send.skipped.hint', 'Interval fired while the previous request was still in flight')}>
-            {sim.state.skipped} {t('send.skipped', 'skipped')}
+        <span className={`chip${sim.transmission.failed ? ' t-error' : ''}`}>
+          {sim.transmission.failed} {t('send.failed', 'failed')}
+        </span>
+        {sim.transmission.skipped > 0 && (
+          <span
+            className="chip t-warn"
+            title={t('send.skipped.hint', 'Interval fired while the previous request was still in flight')}
+          >
+            {sim.transmission.skipped} {t('send.skipped', 'skipped')}
           </span>
         )}
       </div>
@@ -267,7 +272,7 @@ function SendResult({ sim }: { sim: TagReader }) {
           {lastUrl && (
             <p className="send-target mono">
               POST {lastUrl}
-              {lastSentAt ? ` · ${lastSentAt.slice(11, 23)}Z` : ''}
+              {lastAt ? ` · ${lastAt.slice(11, 23)}Z` : ''}
             </p>
           )}
         </div>
@@ -488,6 +493,15 @@ function NutrunnerPanel({ sim }: { sim: NutrunnerSimulator }) {
 function DigitalIoPanel({ sim }: { sim: DigitalIoSimulator }) {
   const t = useT();
   return (
+    <>
+      {sim.restMode() && <SendResult sim={sim} />}
+      <IoChannels sim={sim} t={t} />
+    </>
+  );
+}
+
+function IoChannels({ sim, t }: { sim: DigitalIoSimulator; t: Translate }) {
+  return (
     <section className="panel span-2">
       <div className="panel-head">
         <span className="panel-title">{t('io.title', 'I/O Channels')}</span>
@@ -501,10 +515,15 @@ function DigitalIoPanel({ sim }: { sim: DigitalIoSimulator }) {
         </div>
       </div>
       <p className="panel-note">
-        {t(
-          'io.note',
-          'Inputs model field signals (sensors, buttons); outputs model driven loads (valves, lamps). Every transition is logged and framed for the configured transport.',
-        )}
+        {sim.restMode()
+          ? t(
+              'io.note.rest',
+              'Inputs model field signals (sensors, buttons); outputs model driven loads (valves, lamps). Every transition is really posted to the REST endpoint, and the response is shown above.',
+            )
+          : t(
+              'io.note',
+              'Inputs model field signals (sensors, buttons); outputs model driven loads (valves, lamps). Every transition is logged and framed for the configured transport.',
+            )}
       </p>
     </section>
   );

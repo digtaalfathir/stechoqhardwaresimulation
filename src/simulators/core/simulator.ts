@@ -1,7 +1,10 @@
+import { httpPost, postJson, withResponse } from './wire';
 import type {
   ActionDef,
   ActionState,
   ConfigField,
+  Sender,
+  Transmission,
   DeviceStatus,
   SimEvent,
   SimulatorMeta,
@@ -11,6 +14,19 @@ import type {
 } from './types';
 
 export type Config = Record<string, string | number | boolean>;
+
+function blankTransmission(): Transmission {
+  return {
+    sending: false,
+    sent: 0,
+    delivered: 0,
+    failed: 0,
+    skipped: 0,
+    lastResponse: null,
+    lastUrl: null,
+    lastAt: null,
+  };
+}
 
 const MAX_EVENTS = 300;
 
@@ -29,6 +45,18 @@ export abstract class Simulator<S extends object = Record<string, never>> {
 
   status: DeviceStatus = 'OFFLINE';
   events: SimEvent[] = [];
+
+  /**
+   * Real traffic this device has produced. Kept beside the device state rather
+   * than inside it, so every simulator reports sends the same way without
+   * declaring the same eight fields.
+   */
+  transmission: Transmission = blankTransmission();
+
+  /** Overridable so tests never hit the network. */
+  sender: Sender = postJson;
+
+  private inFlight = 0;
 
   private _config: Config = {};
   private _state?: S;
@@ -208,6 +236,7 @@ export abstract class Simulator<S extends object = Record<string, never>> {
   reset() {
     this.ensureBooted();
     this.clearTimers();
+    this.transmission = blankTransmission();
     this.state = this.initialState();
     this.status = 'CONNECTED';
     this.emit('DEVICE_RESET', { device_id: this.deviceId() }, { tone: 'warn', summary: 'Simulator reset' });
@@ -246,6 +275,65 @@ export abstract class Simulator<S extends object = Record<string, never>> {
     };
     this.events = [event, ...this.events].slice(0, MAX_EVENTS);
     this.notify();
+  }
+
+  /**
+   * One real request. Counters, the stored response and the logged event are the
+   * same for every device; the caller only says what it is sending and where.
+   * Returns whether the endpoint accepted it, so a form can stay open on failure.
+   */
+  protected async dispatch(
+    payload: Record<string, unknown>,
+    opts: {
+      /** Leads the event summary, e.g. "6 tag(s)" or "DO03 changed: OFF to ON". */
+      label: string;
+      url: string;
+      note?: string;
+      events?: { ok: string; fail: string };
+      /**
+       * Interval-driven traffic drops a tick rather than stacking requests; a
+       * request caused by a click must never be silently dropped.
+       */
+      coalesce?: boolean;
+    },
+  ): Promise<boolean> {
+    if (opts.coalesce !== false && this.inFlight > 0) {
+      this.transmission = { ...this.transmission, skipped: this.transmission.skipped + 1 };
+      this.notify();
+      return false;
+    }
+
+    this.inFlight++;
+    const at = new Date().toISOString();
+    this.transmission = {
+      ...this.transmission,
+      sending: true,
+      sent: this.transmission.sent + 1,
+      lastUrl: opts.url,
+      lastAt: at,
+    };
+    this.notify();
+
+    const res = await this.sender(opts.url, payload);
+    this.inFlight--;
+    this.transmission = {
+      ...this.transmission,
+      sending: this.inFlight > 0,
+      lastResponse: res,
+      delivered: this.transmission.delivered + (res.ok ? 1 : 0),
+      failed: this.transmission.failed + (res.ok ? 0 : 1),
+    };
+
+    const outcome = res.error ? 'request blocked or unreachable' : `${res.status} ${res.statusText}`.trim();
+    const events = opts.events ?? { ok: 'REQUEST_SENT', fail: 'REQUEST_FAILED' };
+    // The payload stays exactly the request body — copyable and identical to
+    // what your backend receives. The response lives on the frame.
+    this.emit(res.ok ? events.ok : events.fail, payload, {
+      tone: res.ok ? 'ok' : 'error',
+      summary: `${opts.label}${opts.note ? ` · ${opts.note}` : ''} → ${outcome}`,
+      transport: withResponse(httpPost(opts.url, payload), res),
+    });
+    return res.ok;
   }
 
   clearEvents() {

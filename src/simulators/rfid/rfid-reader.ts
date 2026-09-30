@@ -1,5 +1,5 @@
 import type { ActionDef, ActionState, ConfigField, SimulatorMeta } from '../core/types';
-import { BASE_URLS, TagReader, sample, shuffle, type TagReaderState } from './tag-reader';
+import { BASE_URLS, RFID_EVENTS, TagReader, sample, shuffle, type TagReaderState } from './tag-reader';
 
 /** Fixed by the device — the gate always identifies itself as this reader. */
 export const READER_ID = 'SIMULATOR-02';
@@ -197,7 +197,7 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
     this.setState({ scanning: false });
     this.emit(
       'SCAN_STOPPED',
-      { reader_id: READER_ID, payloads_sent: this.state.sendCount, covered: this.state.covered },
+      { reader_id: READER_ID, payloads_sent: this.transmission.sent, covered: this.state.covered },
       { tone: 'neutral', summary: 'Gate stopped' },
     );
   }
@@ -214,10 +214,6 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
     }
     // Consuming the plan before knowing the request goes out would mark tags as
     // reported that were never sent.
-    if (this.inFlight) {
-      this.setState({ skipped: this.state.skipped + 1 });
-      return;
-    }
 
     this.syncWithTagList(all);
     const sweep = this.state.sweep + 1;
@@ -239,6 +235,8 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
     await this.dispatch(this.buildPayload(batch), {
       label: `${batch.length} tag(s)`,
       note: `${this.reported.length}/${all.length} covered`,
+      url: this.url(),
+      events: RFID_EVENTS,
     });
 
     if (fresh.length > 0 && this.pending.length === 0) {
