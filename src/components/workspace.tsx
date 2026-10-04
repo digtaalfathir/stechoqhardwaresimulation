@@ -429,15 +429,22 @@ function ComboInput({
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  /** null while browsing the whole list; a string while searching it. */
+  const [query, setQuery] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
+
+  const close = () => {
+    setOpen(false);
+    setQuery(null);
+  };
 
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: MouseEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
+      if (!root.current?.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') close();
     };
     document.addEventListener('mousedown', onPointer);
     document.addEventListener('keydown', onKey);
@@ -447,6 +454,15 @@ function ComboInput({
     };
   }, [open]);
 
+  // Typing searches the list: anything holding the text, with the entries that
+  // start with it first, so "T" leads with T1B and "WR" with WR01.
+  const q = (query ?? '').trim().toLowerCase();
+  const matches = q
+    ? options
+        .filter((o) => `${o} ${labels?.[o] ?? ''}`.toLowerCase().includes(q))
+        .sort((a, b) => Number(b.toLowerCase().startsWith(q)) - Number(a.toLowerCase().startsWith(q)))
+    : options;
+
   return (
     <div className="combo" ref={root}>
       <input
@@ -455,7 +471,16 @@ function ComboInput({
         value={value}
         placeholder={placeholder}
         autoComplete="off"
-        onChange={(e) => onChange(e.target.value)}
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        onChange={(e) => {
+          onChange(e.target.value);
+          if (options.length) {
+            setQuery(e.target.value);
+            setOpen(true);
+          }
+        }}
       />
       {options.length > 0 && (
         <button
@@ -464,29 +489,42 @@ function ComboInput({
           aria-label={t('combo.options', 'Show options')}
           aria-expanded={open}
           tabIndex={-1}
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            // The arrow means "show me everything": while a search is narrowing
+            // the list it widens it back instead of closing what you opened.
+            if (open && query !== null) {
+              setQuery(null);
+              return;
+            }
+            setQuery(null);
+            setOpen((v) => !v);
+          }}
         >
           <Icon name="caret" size={14} />
         </button>
       )}
       {open && (
         <ul className="combo-list" role="listbox">
-          {options.map((o) => (
-            <li key={o}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={o === value}
-                title={labels?.[o] ?? o}
-                onClick={() => {
-                  onChange(o);
-                  setOpen(false);
-                }}
-              >
-                {labels?.[o] ?? o}
-              </button>
-            </li>
-          ))}
+          {matches.length === 0 ? (
+            <li className="combo-empty">{t('combo.nomatch', 'No match — the value is still yours to type')}</li>
+          ) : (
+            matches.map((o) => (
+              <li key={o}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={o === value}
+                  title={labels?.[o] ?? o}
+                  onClick={() => {
+                    onChange(o);
+                    close();
+                  }}
+                >
+                  {labels?.[o] ?? o}
+                </button>
+              </li>
+            ))
+          )}
         </ul>
       )}
     </div>

@@ -28,6 +28,7 @@ const ID: Record<string, string> = {
   'title.about': 'Tentang',
 
   // --- settings menu -------------------------------------------------------
+  'combo.nomatch': 'Tidak ada yang cocok — nilainya tetap bisa Anda ketik sendiri',
   'settings.label': 'Pengaturan',
   'settings.theme': 'Tema',
   'settings.theme.light': 'Terang',
