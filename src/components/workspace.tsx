@@ -274,7 +274,7 @@ function Field({
         <select id={id} className={cls} value={v} onChange={(e) => onChange(field.key, e.target.value)}>
           {field.options?.map((o) => (
             <option key={o} value={o}>
-              {o}
+              {field.optionLabels?.[o] ?? o}
             </option>
           ))}
         </select>
@@ -284,6 +284,7 @@ function Field({
           className={cls}
           value={v}
           options={field.options ?? []}
+          labels={field.optionLabels}
           placeholder={field.placeholder}
           onChange={(next) => onChange(field.key, next)}
         />
@@ -413,6 +414,7 @@ function ComboInput({
   id,
   value,
   options,
+  labels,
   className,
   placeholder,
   onChange,
@@ -420,6 +422,7 @@ function ComboInput({
   id: string;
   value: string;
   options: string[];
+  labels?: Record<string, string>;
   className?: string;
   placeholder?: string;
   onChange: (value: string) => void;
@@ -474,12 +477,13 @@ function ComboInput({
                 type="button"
                 role="option"
                 aria-selected={o === value}
+                title={labels?.[o] ?? o}
                 onClick={() => {
                   onChange(o);
                   setOpen(false);
                 }}
               >
-                {o}
+                {labels?.[o] ?? o}
               </button>
             </li>
           ))}

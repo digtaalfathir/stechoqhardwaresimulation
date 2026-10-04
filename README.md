@@ -43,6 +43,13 @@ timing. A failure on screen is a real one (rejected, unreachable, or CORS). Send
 `Simulator`, so any device reports its traffic the same way and the send-result panel works for all
 of them.
 
+The handheld fills its **RR Type** and **Factory** dropdowns from the host itself — read once when the
+workspace opens and again whenever the base URL changes, since each host holds different master data.
+A scan sends the factory's `code`; a replacement sends its `id`, which is a different number only the
+host knows (DENSO is code 5022 but id 200), so a factory outside the loaded list blocks the
+replacement instead of guessing. If a host does not serve those lists, the dropdowns fall back to
+built-in values and say so, without taking the workspace away.
+
 The nutrunner speaks **Open Protocol**: a MID 0001/0002 handshake and a MID 0060 subscribe when the
 configuration is applied, then a byte-accurate MID 0061 revision 1 telegram per fastening, a MID 0062
 acknowledge, and MID 0071 for tool alarms. The telegrams are **generated for inspection**, because a
@@ -60,7 +67,7 @@ Device) appear as planned rows in the explorer.
 src/
 ├── simulators/
 │   ├── core/            Simulator base class, shared types, wire builders
-│   ├── rfid/            RFID handheld scanner
+│   ├── rfid/            RFID handheld + gate reader, master data
 │   ├── nutrunner/       Tightening tool
 │   ├── digital-io/      Discrete I/O controller
 │   ├── registry.ts      The one place devices are registered

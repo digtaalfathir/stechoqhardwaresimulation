@@ -1544,6 +1544,16 @@ pre.code.inline {
   filter: grayscale(0.35);
 }
 
+/* A notice, not a wall: it sits in the flow and keeps the controls reachable. */
+.master-note {
+  margin: 0 0 12px;
+}
+
+.master-note span {
+  flex: 1;
+  min-width: 0;
+}
+
 .locked-note {
   display: flex;
   align-items: center;

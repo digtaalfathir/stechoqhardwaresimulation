@@ -204,6 +204,17 @@ const ID: Record<string, string> = {
   'send.note':
     'Request ini benar-benar dikirim dari browser Anda. Kegagalan di sini adalah kegagalan sungguhan: endpoint menolak, tidak dapat dijangkau, atau tidak mengizinkan halaman ini (CORS).',
 
+  // --- master data ---
+  'master.title': 'Data Master',
+  'master.loading': 'MEMUAT',
+  'master.failed': 'GAGAL',
+  'master.lede': 'Membaca daftar RR type dan factory yang dikenal host ini.',
+  'master.note':
+    'Dropdown tidak bisa dibaca dari host ini, jadi kembali ke nilai bawaan. Penggantian tetap membutuhkan factory dari host, karena yang dikirim adalah id-nya.',
+  'master.hide': 'Sembunyikan',
+  'master.close': 'Tutup',
+  'master.retry': 'Coba Lagi',
+
   // --- rfid replacement ---
   'repl.title': 'Penggantian Tag',
   'repl.register': 'mode register',
@@ -214,13 +225,14 @@ const ID: Record<string, string> = {
   'repl.old.hint': 'Diketik manual — tag yang rusak tidak bisa dibaca',
   'repl.remark': 'Alasan',
   'repl.factory': 'Factory ID',
-  'repl.factory.hint': 'Diambil dari Factory Code, dikirim sebagai angka',
-  'repl.factory.empty': 'isi Factory Code di konfigurasi',
+  'repl.factory.hint': 'Dicari dari data master host',
+  'repl.factory.empty': 'pilih Factory Code di konfigurasi',
   'repl.problem.old': 'Isi tag yang digantikan.',
   'repl.problem.new': 'Daftar tag belum berisi tag baru — tutup ini dan pindai dulu.',
   'repl.problem.remark': 'Pilih alasannya.',
-  'repl.problem.factory':
-    'Factory Code harus berupa angka — isi di konfigurasi, nilainya dikirim sebagai factory_id.',
+  'repl.problem.factory': 'Pilih Factory Code di konfigurasi.',
+  'repl.problem.factory.unknown':
+    'Factory itu tidak ada di data master host, jadi id-nya tidak diketahui — pilih dari dropdown.',
   'repl.cancel': 'Batal',
   'repl.submit': 'Kirim Penggantian',
   'repl.sending': 'Mengirim…',

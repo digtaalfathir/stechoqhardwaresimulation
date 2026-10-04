@@ -37,6 +37,8 @@ export interface ConfigField {
   readonly?: boolean;
   default: string | number | boolean;
   options?: string[];
+  /** Friendlier text for an option whose value must stay machine-readable. */
+  optionLabels?: Record<string, string>;
   hint?: string;
   min?: number;
   max?: number;

@@ -34,15 +34,98 @@ export function DevicePanel({ sim }: { sim: AnySimulator }) {
  * are adding and removing tags between scans.
  */
 function RfidTagPanel({ sim }: { sim: TagReader }) {
-  const replacing = sim instanceof RfidHandheldSimulator && sim.replacementActive();
+  const handheld = sim instanceof RfidHandheldSimulator ? sim : null;
+  const replacing = handheld?.replacementActive() ?? false;
+
+  // The dropdowns belong to the host, so they are read as soon as the workspace
+  // opens — and again whenever the base URL changes, which applyConfig triggers.
+  useEffect(() => {
+    void handheld?.ensureMasterData();
+  }, [handheld]);
+
   return (
     <>
+      {handheld && <MasterDataNotice sim={handheld} />}
       <SendResult sim={sim} />
       <TagList sim={sim} replacing={replacing} />
-      {sim instanceof RfidHandheldSimulator && sim.state.replacementOpen && (
-        <ReplacementDialog sim={sim} />
-      )}
+      {handheld && <MasterDataDialog sim={handheld} />}
+      {handheld?.state.replacementOpen && <ReplacementDialog sim={handheld} />}
     </>
+  );
+}
+
+/**
+ * A blocking dialog while the host lists are being read — and nothing more.
+ * A failed read is informative, not fatal: you can still type values by hand,
+ * so it becomes a notice beside the fields instead of a wall.
+ */
+function MasterDataDialog({ sim }: { sim: RfidHandheldSimulator }) {
+  const t = useT();
+  const [dismissed, setDismissed] = useState(false);
+  const loading = sim.state.master === 'loading';
+
+  useEffect(() => {
+    if (loading) setDismissed(false);
+  }, [loading]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDismissed(true);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  if (!loading || dismissed) return null;
+  const urls = sim.masterUrls();
+
+  return (
+    <div className="modal-backdrop" onMouseDown={() => setDismissed(true)}>
+      <div className="modal" role="dialog" aria-modal="true" aria-busy onMouseDown={(e) => e.stopPropagation()}>
+        <div className="panel-head">
+          <span className="panel-title">{t('master.title', 'Master Data')}</span>
+          <div className="spacer" />
+          <span className="status t-active">
+            <span className="dot" />
+            {t('master.loading', 'LOADING')}
+          </span>
+        </div>
+        <div className="modal-body">
+          <p className="modal-lede">
+            {t('master.lede', 'Reading the RR types and factories this host knows about.')}
+          </p>
+          <p className="send-target mono">GET {urls.rrTypes}</p>
+          <p className="send-target mono">GET {urls.factories}</p>
+        </div>
+        <div className="modal-foot">
+          <span className="spacer" />
+          <button type="button" className="btn" onClick={() => setDismissed(true)}>
+            {t('master.hide', 'Hide')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Says the dropdowns are not the host's, without taking the workspace away. */
+function MasterDataNotice({ sim }: { sim: RfidHandheldSimulator }) {
+  const t = useT();
+  if (sim.state.master !== 'failed') return null;
+  return (
+    <p className="locked-note master-note">
+      <Icon name="broadcast" size={14} />
+      <span>
+        {t(
+          'master.note',
+          'The dropdowns could not be read from this host, so they fall back to built-in values. A replacement still needs a factory from the host, because it sends the factory id.',
+        )}
+        {sim.state.masterError ? ` — ${sim.state.masterError}` : ''}
+      </span>
+      <button type="button" className="btn btn-sm" onClick={() => void sim.ensureMasterData(true)}>
+        {t('master.retry', 'Retry')}
+      </button>
+    </p>
   );
 }
 
@@ -79,9 +162,10 @@ function ReplacementDialog({ sim }: { sim: RfidHandheldSimulator }) {
     'no-old-tag': t('repl.problem.old', 'Enter the tag that is being replaced.'),
     'no-new-tag': t('repl.problem.new', 'The tag list has no new tag — close this and scan one first.'),
     'no-remark': t('repl.problem.remark', 'Pick a reason.'),
-    'bad-factory-code': t(
-      'repl.problem.factory',
-      'Factory Code must be a number — set it in the configuration, it is sent as factory_id.',
+    'no-factory': t('repl.problem.factory', 'Pick a Factory Code in the configuration.'),
+    'unknown-factory': t(
+      'repl.problem.factory.unknown',
+      'That factory is not in the host master data, so its id is unknown — pick one from the dropdown.',
     ),
   };
 
@@ -142,12 +226,12 @@ function ReplacementDialog({ sim }: { sim: RfidHandheldSimulator }) {
             <label>{t('repl.factory', 'Factory ID')}</label>
             <input
               className="mono-input readonly-input"
-              value={Number.isFinite(sim.factoryId()) && sim.cfg('factory_code').trim() ? sim.factoryId() : ''}
-              placeholder={t('repl.factory.empty', 'set Factory Code in the configuration')}
+              value={sim.selectedFactory() ? `${sim.factoryId()} — ${sim.selectedFactory()!.name}` : ''}
+              placeholder={t('repl.factory.empty', 'pick a Factory Code in the configuration')}
               readOnly
               tabIndex={-1}
             />
-            <span className="hint">{t('repl.factory.hint', 'Taken from Factory Code, sent as a number')}</span>
+            <span className="hint">{t('repl.factory.hint', 'Looked up from the host master data')}</span>
           </div>
 
           <div className="field">

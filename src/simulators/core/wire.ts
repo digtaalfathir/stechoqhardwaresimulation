@@ -106,6 +106,81 @@ function explain(err: unknown, url: string, timeoutMs: number): Partial<Transpor
   };
 }
 
+/** The parsed result of a read, with the same honest failure reporting. */
+export interface FetchResult<T> {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  data: T | null;
+  durationMs: number;
+  error?: string;
+}
+
+/** Reads JSON for real. Like postJson, it never throws — a refusal is a result. */
+export async function getJson<T>(url: string, timeoutMs = 30000): Promise<FetchResult<T>> {
+  const started = performance.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: controller.signal });
+    const text = await res.text();
+    const durationMs = Math.round(performance.now() - started);
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: res.status,
+        statusText: res.statusText,
+        data: null,
+        durationMs,
+        error: `${res.status} ${res.statusText} — ${summarise(text) || 'no body'}`.trim(),
+      };
+    }
+    try {
+      return { ok: true, status: res.status, statusText: res.statusText, data: JSON.parse(text) as T, durationMs };
+    } catch {
+      return {
+        ok: false,
+        status: res.status,
+        statusText: res.statusText,
+        data: null,
+        durationMs,
+        error: 'The response was not JSON.',
+      };
+    }
+  } catch (err) {
+    const explained = explain(err, url, timeoutMs);
+    return {
+      ok: false,
+      status: 0,
+      statusText: '',
+      data: null,
+      durationMs: Math.round(performance.now() - started),
+      error: explained.error,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The GET a reader made, for the communication log. */
+export function httpGet(url: string): TransportFrame {
+  let host = 'localhost';
+  let path = url || '/';
+  try {
+    const parsed = new URL(url);
+    host = parsed.host;
+    path = parsed.pathname + parsed.search;
+  } catch {
+    /* a bare path — keep the defaults */
+  }
+  return {
+    protocol: 'REST',
+    direction: 'outbound',
+    summary: `GET ${url || path}`,
+    detail: [`GET ${path} HTTP/1.1`, `Host: ${host}`, 'Accept: application/json'].join('\n'),
+  };
+}
+
 /** Renders a response the way a client would print it, below the request. */
 export function withResponse(frame: TransportFrame, res: TransportResponse): TransportFrame {
   const body = res.error

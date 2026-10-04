@@ -6,6 +6,7 @@
  */
 import { simulators, getSimulator, plannedSimulators, CATEGORIES } from './registry';
 import { RfidHandheldSimulator } from './rfid/rfid-handheld';
+import type { MasterFetch } from './rfid/master-data';
 import { RfidReaderSimulator } from './rfid/rfid-reader';
 import { NutrunnerSimulator } from './nutrunner/nutrunner';
 import { DigitalIoSimulator } from './digital-io/digital-io';
@@ -45,6 +46,25 @@ function assert(cond: unknown, msg: string): void {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Master data as a host would serve it, without a host. */
+const MASTER: MasterFetch = {
+  ok: true,
+  data: {
+    rrTypes: ['T1B', 'T1R', 'SP3'],
+    factories: [
+      { id: 200, code: '5022', name: 'DENSO INDONESIA' },
+      { id: 234, code: '721B', name: 'KUO' },
+    ],
+  },
+  reports: [],
+};
+
+/** Every handheld in this check reads master data from the fixture, not the network. */
+function offline(sim: RfidHandheldSimulator, fetchMaster: () => Promise<MasterFetch> = async () => MASTER) {
+  sim.fetchMaster = fetchMaster;
+  return sim;
+}
+
 async function main() {
   // --- registry contract ---
   assert(simulators.length === 4, 'registry exposes the live devices');
@@ -78,6 +98,7 @@ async function main() {
   // --- nothing runs before the configuration is applied ---
   for (const Device of [RfidHandheldSimulator, RfidReaderSimulator, NutrunnerSimulator, DigitalIoSimulator]) {
     const fresh = new Device();
+    if (fresh instanceof RfidHandheldSimulator) offline(fresh);
     assert(fresh.status === 'OFFLINE', `${fresh.meta.id} starts offline`);
     const action = fresh.actions.find((a) => a.id !== 'reset')!;
     fresh.run(action.id);
@@ -94,7 +115,7 @@ async function main() {
   assert(offlineDio.transmission.sent === 0, 'and it sends nothing');
 
   // --- config validation is the trust boundary ---
-  const rfid = new RfidHandheldSimulator();
+  const rfid = offline(new RfidHandheldSimulator());
   let lastSentTo = '';
   let lastSentBody: unknown = null;
   rfid.sender = async (url, body) => {
@@ -289,8 +310,93 @@ async function main() {
   assert(rfid.cfg('maker_name') === 'check', 'reset keeps the applied configuration');
   assert(rfid.events[0].name === 'DEVICE_RESET', 'reset is logged');
 
+  // --- master data drives the dropdowns ---
+  const master = new RfidHandheldSimulator();
+  let fetches: string[] = [];
+  master.fetchMaster = async (base) => {
+    fetches.push(base);
+    return MASTER;
+  };
+  const rrField = () => master.configFields.find((f) => f.key === 'rr_type')!;
+  const facField = () => master.configFields.find((f) => f.key === 'factory_code')!;
+
+  await master.ensureMasterData();
+  assert(fetches.length === 1, 'opening the workspace reads the master data once');
+  assert(master.state.master === 'ready', 'the device reports the lists as ready');
+  assert(
+    JSON.stringify(rrField().options) === JSON.stringify(['T1B', 'T1R', 'SP3']),
+    'the RR type dropdown holds the host values, not the hardcoded list',
+  );
+  assert(
+    JSON.stringify(facField().options) === JSON.stringify(['5022', '721B']),
+    'the factory dropdown holds the codes',
+  );
+  assert(
+    facField().optionLabels?.['5022'] === '5022 · DENSO INDONESIA',
+    'a factory shows its name but stores its code',
+  );
+
+  // The same host is not read again and again.
+  await master.ensureMasterData();
+  assert(fetches.length === 1, 'the same base URL is not fetched twice');
+  master.applyConfig({ antenna: '2' });
+  await sleep(10);
+  assert(fetches.length === 1, 'applying an unrelated change does not refetch');
+
+  // A different host holds different master data, so it is read again.
+  master.applyConfig({ baseUrl: 'https://product.suite.stechoq-j.com' });
+  await sleep(10);
+  assert(fetches.length === 2, 'changing the base URL reloads the lists');
+  assert(fetches[1] === 'https://product.suite.stechoq-j.com', 'and reads from the new host');
+  await master.ensureMasterData(true);
+  assert(fetches.length === 3, 'a retry forces a reload');
+
+  // A failed read keeps whatever is usable and says what happened.
+  const broken = new RfidHandheldSimulator();
+  broken.fetchMaster = async () => ({
+    ok: false,
+    data: { rrTypes: [], factories: [] },
+    reports: [
+      {
+        name: 'RR types',
+        url: 'https://host.test/rr',
+        ok: false,
+        count: 0,
+        status: 0,
+        durationMs: 4,
+        error: 'Could not reach host.test',
+      },
+    ],
+    error: 'Could not reach host.test',
+  });
+  await broken.ensureMasterData();
+  assert(broken.state.master === 'failed', 'a failed read is reported as failed');
+  assert(broken.state.masterError?.includes('host.test'), 'and keeps the reason');
+  assert(broken.events[0].name === 'MASTER_DATA_FAILED', 'the failure reaches the event log');
+  assert(broken.events[0].transport?.summary.startsWith('GET '), 'the read shows up as a GET in the log');
+  assert(
+    broken.configFields.find((f) => f.key === 'rr_type')!.options!.length > 0,
+    'the built-in RR types stay as a fallback when the host cannot be read',
+  );
+
+  // A failed refresh must not leave options on screen whose ids are gone.
+  master.fetchMaster = async () => ({
+    ok: false,
+    data: { rrTypes: [], factories: [] },
+    reports: [],
+    error: 'host went away',
+  });
+  await master.ensureMasterData(true);
+  assert(master.state.master === 'failed', 'the refresh failed');
+  assert(facField().options!.length === 2, 'the previous factory options are still on screen');
+  assert(master.factories().length === 2, 'and they are still usable, not just painted');
+  master.applyConfig({ factory_code: '5022' });
+  assert(master.factoryId() === 200, 'a factory picked from the stale list still resolves to its id');
+  broken.clearTimers();
+  master.clearTimers();
+
   // --- handheld replacement mode ---
-  const repl = new RfidHandheldSimulator();
+  const repl = offline(new RfidHandheldSimulator());
   let replUrl = '';
   let replBody: Record<string, unknown> = {};
   repl.sender = async (url, body) => {
@@ -299,12 +405,16 @@ async function main() {
     return accepted;
   };
   repl.applyConfig({ baseUrl: 'http://localhost:8000', mode: 'wo', replacement: true, opname: false });
+  await sleep(10);
+  assert(repl.state.master === 'ready', 'applying the configuration loads the master data');
+  assert(repl.factories().length === 2, 'the factory list came from the host');
   assert(!repl.replacementActive(), 'replacement stays off outside register mode');
   assert(repl.bool('opname') === true, 'the replacement flag forces opname on even from a direct patch');
 
-  repl.applyConfig({ mode: 'register', replacement: true, factory_code: '382' });
+  repl.applyConfig({ mode: 'register', replacement: true, factory_code: '5022' });
   assert(repl.replacementActive(), 'register mode turns replacement on');
-  assert(repl.factoryId() === 382, 'factory_id is read from the factory code, not a second field');
+  assert(repl.factoryId() === 200, 'factory_id is the id from master data, not the code itself');
+  assert(repl.selectedFactory()?.name === 'DENSO INDONESIA', 'the selected factory carries its name');
   assert(
     !repl.configFields.some((f) => f.key === 'factoryId' || f.key === 'replaceEndpoint'),
     'the replace endpoint and factory id are not configuration fields',
@@ -332,16 +442,17 @@ async function main() {
   assert(repl.transmission.sent === beforeOpen, 'a refused form sends nothing');
   assert(repl.replacementProblem('OLD', 'Tag damaged') === null, 'a complete form reports no problem');
 
-  // A factory code that is not a number would post factory_id: null.
-  repl.applyConfig({ factory_code: 'not-a-number' });
+  // A factory the host does not know has no id, so it cannot be posted.
+  repl.applyConfig({ factory_code: 'NOT-IN-MASTER' });
   assert(
-    repl.replacementProblem('OLD', 'Tag damaged') === 'bad-factory-code',
-    'a non-numeric factory code blocks the replacement',
+    repl.replacementProblem('OLD', 'Tag damaged') === 'unknown-factory',
+    'a factory outside the master data blocks the replacement',
   );
+  assert(Number.isNaN(repl.factoryId()), 'and it has no id to guess at');
   assert((await repl.submitReplacement('OLD', 'Tag damaged')) === false, 'and it is refused, not sent as null');
   repl.applyConfig({ factory_code: '' });
-  assert(repl.replacementProblem('OLD', 'Tag damaged') === 'bad-factory-code', 'an empty factory code blocks it too');
-  repl.applyConfig({ factory_code: '382' });
+  assert(repl.replacementProblem('OLD', 'Tag damaged') === 'no-factory', 'an empty factory blocks it too');
+  repl.applyConfig({ factory_code: '5022' });
 
   // The real thing.
   assert(await repl.submitReplacement('  E2806894000050367572D095  ', 'Tag damaged'), 'a complete form is sent');
@@ -354,8 +465,8 @@ async function main() {
   assert(replBody.old_rfid_number === 'E2806894000050367572D095', 'the old tag is trimmed');
   assert(replBody.new_rfid_number === 'RFID_NEW_703', 'the new tag comes from the tag list');
   assert(replBody.replacement_remark === 'Tag damaged', 'the reason reaches the body');
-  assert(replBody.factory_id === 382 && typeof replBody.factory_id === 'number', 'factory_id is a number');
-  assert(repl.cfg('factory_code') === '382', 'the scan payload keeps the same value as a string');
+  assert(replBody.factory_id === 200 && typeof replBody.factory_id === 'number', 'factory_id is the numeric id');
+  assert(repl.cfg('factory_code') === '5022', 'while the scan payload keeps sending the code');
   assert(replBody.opname === true, 'opname rides along as a boolean');
   assert(repl.events[0].name === 'REPLACEMENT_SENT', 'a delivered replacement is logged as such');
   assert(!repl.state.replacementOpen, 'the form closes once the endpoint accepts it');

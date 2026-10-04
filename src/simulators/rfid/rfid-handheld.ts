@@ -1,5 +1,13 @@
 import type { ActionDef, ActionState, ConfigField, SimulatorMeta } from '../core/types';
-import { randomEpc } from '../core/wire';
+import { httpGet, randomEpc } from '../core/wire';
+import {
+  factoryLabels,
+  fetchMasterData,
+  masterUrls,
+  type Factory,
+  type MasterData,
+  type MasterFetch,
+} from './master-data';
 import { BASE_URLS, RFID_EVENTS, TagReader, type TagReaderState } from './tag-reader';
 
 export { BASE_URLS };
@@ -25,19 +33,28 @@ const YEARS = Array.from({ length: 31 }, (_, i) => String(2000 + i));
 const ANTENNAS = Array.from({ length: 8 }, (_, i) => String(i + 1));
 
 /** What is stopping a replacement from being sent. */
-export type ReplacementProblem = 'no-old-tag' | 'no-new-tag' | 'no-remark' | 'bad-factory-code';
+export type ReplacementProblem = 'no-old-tag' | 'no-new-tag' | 'no-remark' | 'no-factory' | 'unknown-factory';
 
 const PROBLEM_SUMMARY: Record<ReplacementProblem, string> = {
   'no-old-tag': 'the old tag is empty',
   'no-new-tag': 'the tag list has no new tag',
   'no-remark': 'no reason was picked',
-  'bad-factory-code': 'Factory Code is not a number',
+  'no-factory': 'no factory is selected',
+  'unknown-factory': 'the factory is not in the host master data, so its id is unknown',
 };
+
+export type MasterStatus = 'idle' | 'loading' | 'ready' | 'failed';
 
 interface HandheldState extends TagReaderState {
   lastTagCount: number;
   /** Replacement asks for the old tag before anything is sent. */
   replacementOpen: boolean;
+  /** Dropdown values read from the host, not copied into the source. */
+  master: MasterStatus;
+  masterError: string | null;
+  /** Which base URL the loaded lists came from. */
+  masterFrom: string | null;
+  factories: Factory[];
 }
 
 const DEFAULT_TAGS = [
@@ -93,17 +110,28 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       mono: true,
       hint: 'Fixed by the device',
     },
+    // Options are replaced with the host's own lists once master data loads.
     {
       key: 'rr_type',
       label: 'RR Type',
       type: 'combo',
       default: '',
-      options: RR_TYPES,
+      options: [...RR_TYPES],
       mono: true,
       placeholder: 'Pick or type',
+      hint: 'From the host master data',
     },
     { key: 'maker_name', label: 'Maker Name', type: 'text', default: '', placeholder: 'e.g. check' },
-    { key: 'factory_code', label: 'Factory Code', type: 'text', default: '', mono: true, placeholder: 'e.g. 5022' },
+    {
+      key: 'factory_code',
+      label: 'Factory Code',
+      type: 'combo',
+      default: '',
+      options: [],
+      mono: true,
+      placeholder: 'e.g. 5022',
+      hint: 'Sent as factory_code; its id is sent on a replacement',
+    },
     { key: 'initial_year', label: 'Initial Year', type: 'select', default: '2026', options: YEARS },
     { key: 'antenna', label: 'Antenna', type: 'select', default: '1', options: ANTENNAS },
     { key: 'mode', label: 'Mode', type: 'switch', default: 'wo', options: ['register', 'wo'] },
@@ -179,7 +207,115 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
 
   protected initialState(): HandheldState {
     this.loop = null;
-    return { ...this.baseState(DEFAULT_TAGS), lastTagCount: 0, replacementOpen: false };
+    return {
+      ...this.baseState(DEFAULT_TAGS),
+      lastTagCount: 0,
+      replacementOpen: false,
+      master: 'idle',
+      masterError: null,
+      masterFrom: null,
+      factories: [],
+    };
+  }
+
+  // --- master data ----------------------------------------------------------
+
+  /** Overridable so tests never hit the network, exactly like `sender`. */
+  fetchMaster: (baseUrl: string) => Promise<MasterFetch> = fetchMasterData;
+
+  private get rrTypeField(): ConfigField {
+    return this.configFields.find((f) => f.key === 'rr_type')!;
+  }
+
+  private get factoryField(): ConfigField {
+    return this.configFields.find((f) => f.key === 'factory_code')!;
+  }
+
+  /**
+   * Loads the dropdown values from whichever host the base URL points at.
+   * Different hosts hold different master data, so the lists follow the base
+   * URL: once on open, and again whenever that URL changes.
+   */
+  async ensureMasterData(force = false): Promise<void> {
+    const base = this.cfg('baseUrl');
+    if (!base) return;
+    if (this.state.master === 'loading') return;
+    if (!force && this.state.master === 'ready' && this.state.masterFrom === base) return;
+
+    this.setState({ master: 'loading', masterError: null });
+    const result = await this.fetchMaster(base);
+
+    // Keep whatever came back: one list failing must not blank the other.
+    this.loadMasterData(result.data);
+    this.setState({
+      master: result.ok ? 'ready' : 'failed',
+      masterError: result.error ?? null,
+      masterFrom: base,
+    });
+
+    for (const report of result.reports) {
+      this.emit(
+        report.ok ? 'MASTER_DATA_LOADED' : 'MASTER_DATA_FAILED',
+        {
+          list: report.name,
+          url: report.url,
+          items: report.count,
+          status: report.status,
+          duration_ms: report.durationMs,
+          ...(report.error ? { error: report.error } : {}),
+        },
+        {
+          tone: report.ok ? 'ok' : 'error',
+          summary: report.ok
+            ? `${report.count} ${report.name} loaded from the host`
+            : `${report.name} could not be loaded — ${report.error}`,
+          transport: {
+            ...httpGet(report.url),
+            live: true,
+            response: {
+              ok: report.ok,
+              status: report.status,
+              statusText: report.ok ? 'OK' : '',
+              message: report.ok ? `${report.count} usable value(s)` : '',
+              durationMs: report.durationMs,
+              error: report.error,
+            },
+          },
+        },
+      );
+    }
+  }
+
+  /**
+   * Applies master data — used by the fetch and by the self-check.
+   *
+   * An empty list is never applied: a failed refresh must leave the previous
+   * values alone, or the dropdown would keep showing options whose ids are gone
+   * and every one of them would be unusable.
+   */
+  loadMasterData(data: MasterData) {
+    const patch: Partial<HandheldState> = { master: 'ready', masterFrom: this.cfg('baseUrl') };
+    if (data.rrTypes.length) this.rrTypeField.options = data.rrTypes;
+    if (data.factories.length) {
+      this.factoryField.options = data.factories.map((f) => f.code);
+      this.factoryField.optionLabels = factoryLabels(data.factories);
+      patch.factories = data.factories;
+    }
+    this.setState(patch);
+  }
+
+  /** The two URLs the dropdowns come from, for the loading dialog. */
+  masterUrls() {
+    return masterUrls(this.cfg('baseUrl'));
+  }
+
+  factories(): Factory[] {
+    return this.state.factories;
+  }
+
+  selectedFactory(): Factory | undefined {
+    const code = this.cfg('factory_code').trim();
+    return this.state.factories.find((f) => f.code === code);
   }
 
   /** Replacement only exists in register mode, whatever the stored flag says. */
@@ -197,12 +333,12 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
   }
 
   /**
-   * The replace API wants the factory as a number; the scan payload sends the
-   * same value as a string, so it is read from one field rather than two that
-   * could drift apart.
+   * The replace API wants the factory's id, which is not its code — DENSO is
+   * code 5022 but id 200. It is only knowable from master data, so a factory
+   * that is not in the loaded list blocks the replacement instead of guessing.
    */
   factoryId(): number {
-    return Number(this.cfg('factory_code').trim());
+    return this.selectedFactory()?.id ?? NaN;
   }
 
   /**
@@ -213,13 +349,18 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     if (!oldTag.trim()) return 'no-old-tag';
     if (!this.newTag()) return 'no-new-tag';
     if (!remark) return 'no-remark';
-    const raw = this.cfg('factory_code').trim();
-    if (!raw || !Number.isFinite(Number(raw))) return 'bad-factory-code';
+    if (!this.cfg('factory_code').trim()) return 'no-factory';
+    if (!this.selectedFactory()) return 'unknown-factory';
     return null;
   }
 
   protected identity() {
     return { reader_id: READER_ID, antenna: this.cfg('antenna') };
+  }
+
+  /** A new base URL means a different host, so the dropdowns are reloaded. */
+  protected onConfigApplied() {
+    void this.ensureMasterData();
   }
 
   protected onAction(id: string) {
