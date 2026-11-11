@@ -110,6 +110,16 @@ after 10 minutes with no workspace calling, a second Start exits because the por
 output goes to `mc-plc.log` beside the installed copy. Re-run the install command to update;
 `node mc-plc.mjs --uninstall` removes it all. macOS is not covered: use the command without `--install`.
 
+The workspace draws the PLC as a **Q-series rack in its cabinet**: a red power supply, a CPU with a
+built-in Ethernet port, I/O modules wired into the ducts, blank covers, and a LAN cable to the
+acquisition program. The model names follow the real modules; no maker's logo is drawn. The LEDs follow
+the real state: POWER and MODE when the bridge runs, RUN when it answers, ERR blinking when it is
+silent, SD/RD on every frame, and the cable comes out when the PLC goes offline (the I/O LEDs are
+decoration). Below it are a **device monitor** in the GX Works manner (device, a comment kept in the
+browser, value in DEC or HEX, client reads and writes, rows lighting up as the client touches them) and
+a **frame decoder** that colours the bytes of any MC frame by field. The cabinet is scaled to the window
+so it is never cut. Code: [src/components/plc/](src/components/plc/).
+
 The bridge answers **MC Protocol 3E binary** batch word reads (`0401`) and writes (`1401`) for D, R
 and W, with Q and iQ-R sub-commands, exactly as the CPU would. Each browser tab gets its own PLC on
 its own port — the first is `localhost:8200` — and keeps it across reloads (`localStorage`). If the
@@ -139,7 +149,8 @@ src/
 │   └── engine.check.ts  npm run check
 ├── components/          Workspace, event stream, inspector, device panels, settings menu
 │   ├── handheld/        The MC33 device, its tag bench and the WMS RFID Suite app
-│   └── gate/            The isometric 8-antenna gate and the forklift going through
+│   ├── gate/            The isometric 8-antenna gate and the forklift going through
+│   └── plc/             The Q-series rack, the device monitor and the frame decoder
 ├── pages/               Home, explorer, workspace, docs, about
 ├── lib/                 Hash router, React binding, settings store, i18n
 └── styles.css

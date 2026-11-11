@@ -52,6 +52,8 @@ interface PlcState {
   seq: number;
   reads: number;
   writes: number;
+  /** Requests the PLC refused (bad device, count, command). */
+  errors: number;
   zeroing: boolean;
 }
 
@@ -184,6 +186,7 @@ export class McPlcSimulator extends Simulator<PlcState> {
       seq: 0,
       reads: 0,
       writes: 0,
+      errors: 0,
       zeroing: false,
     };
   }
@@ -359,6 +362,7 @@ export class McPlcSimulator extends Simulator<PlcState> {
         this.state.writes++;
         return emit('MC_WRITE', 'active', `${client} wrote ${e.device} ← ${values}`, `1401 write ${e.device} ← ${values}`);
       case 'error':
+        this.state.errors++;
         return emit('MC_ERROR', 'error', `${client} ${e.device ?? ''} refused, end code ${end}${e.note ? ` — ${e.note}` : ''}`, e.req ? `refused ${e.device ?? ''} → ${end}` : undefined);
       case 'ignored':
         return emit('MC_IGNORED', 'warn', `${client} request left unanswered (silent mode)`, 'no answer (silent)');

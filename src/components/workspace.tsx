@@ -13,6 +13,8 @@ import { HandheldWorkspace } from './handheld/handheld-device';
 import { RfidHandheldSimulator } from '../simulators/rfid/rfid-handheld';
 import { RfidReaderSimulator } from '../simulators/rfid/rfid-reader';
 import { GateWorkspace } from './gate/gate-workspace';
+import { McPlcSimulator } from '../simulators/plc/mc-plc';
+import { PlcWorkspace } from './plc/plc-workspace';
 
 const STATUS_TONE: Record<DeviceStatus, Tone> = {
   OFFLINE: 'neutral',
@@ -91,6 +93,9 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
       ) : sim instanceof RfidReaderSimulator ? (
         // The gate is a scene too: a portal, a forklift and its load.
         <GateWorkspace sim={sim} />
+      ) : sim instanceof McPlcSimulator ? (
+        // The PLC is a cabinet with a rack in it, and the engineer's tools below.
+        <PlcWorkspace sim={sim} />
       ) : (
       <>
       <ConfigPanel key={sim.meta.id} sim={sim} />

@@ -1,0 +1,449 @@
+import { useEffect, useState } from 'react';
+import type { McPlcSimulator, PlcMode } from '../../simulators/plc/mc-plc';
+import type { SimEvent } from '../../simulators/core/types';
+import { useSimulator } from '../../lib/use-simulator';
+import { useT } from '../../lib/i18n';
+import { CopyButton } from '../copy-button';
+import { EventStream } from '../event-stream';
+import { CommunicationLog, ConfigPanel } from '../workspace';
+import { MC_EVENTS, PlcCabinet, activeClients, useNow } from './plc-rack';
+import './plc.css';
+
+/**
+ * The PLC workspace: a status line, the cabinet with the rack in it, and
+ * under it the engineer's tools — a device monitor in the GX Works manner and
+ * a decoder for the frames on the wire.
+ */
+export function PlcWorkspace({ sim }: { sim: McPlcSimulator }) {
+  useSimulator(sim);
+  const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
+
+  // The bridge is looked for as soon as the workspace opens.
+  useEffect(() => {
+    if (sim.status === 'OFFLINE') sim.applyConfig({});
+  }, [sim]);
+
+  const selected = sim.events.find((e) => e.seq === selectedSeq) ?? null;
+  const frame = selected && MC_EVENTS.has(selected.name) ? selected : sim.events.find((e) => MC_EVENTS.has(e.name)) ?? null;
+
+  return (
+    <>
+      <StatusBar sim={sim} />
+      <PlcCabinet sim={sim} />
+      <div className="pl-lower">
+        <DeviceMonitor sim={sim} />
+        <div className="pl-side">
+          <FrameDecoder ev={frame} pinned={!!selected && frame === selected} />
+          <EventStream
+            events={sim.events}
+            selectedSeq={selectedSeq}
+            onSelect={setSelectedSeq}
+            onClear={() => {
+              sim.clearEvents();
+              setSelectedSeq(null);
+            }}
+          />
+        </div>
+      </div>
+      <div className="ws-row">
+        <CommunicationLog events={sim.events} />
+      </div>
+    </>
+  );
+}
+
+const MODES: [PlcMode, string, string][] = [
+  ['online', 'Online', '#2bd47a'],
+  ['silent', 'Silent', '#ffb020'],
+  ['offline', 'Offline', '#ff4b3e'],
+];
+
+function StatusBar({ sim }: { sim: McPlcSimulator }) {
+  const t = useT();
+  const st = sim.state;
+  const [settings, setSettings] = useState(false);
+  const up = st.bridge === 'up';
+  const clients = activeClients(sim).list;
+  return (
+    <>
+      <section className="panel pl-status">
+        <span className={`pl-dot ${st.bridge}`} title={st.bridge} />
+        {up ? (
+          <>
+            <span className="muted">{t('plc.endpoint.short', 'Endpoint')}</span>
+            <span className="pl-endpoint">{sim.endpoint()}</span>
+            <CopyButton text={sim.endpoint()} />
+            <span className="pl-kv">
+              <span className="muted">CPU</span> <b>Q03UDV · 3E binary</b>
+            </span>
+            <span className="pl-kv">
+              <span className="muted">Client</span> <b>{clients.length ? clients.join(', ') : '—'}</b>
+            </span>
+          </>
+        ) : (
+          <span className="muted">
+            {st.bridge === 'down'
+              ? t('plc.down', 'The PLC is not running on this computer yet.')
+              : t('plc.checking', 'Looking for the PLC…')}
+          </span>
+        )}
+        <span className="spacer" />
+        <div className="pl-modes" role="group" aria-label={t('plc.mode', 'PLC condition')}>
+          {MODES.map(([id, label, color]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={st.mode === id}
+              disabled={!up}
+              title={sim.actions.find((a) => a.id === `mode-${id}`)?.hint}
+              onClick={() => sim.run(`mode-${id}`)}
+            >
+              <i style={{ background: color }} />
+              {label}
+            </button>
+          ))}
+        </div>
+        {up && (
+          <button type="button" className="btn btn-sm btn-danger" onClick={() => sim.stopBridge()}>
+            ■ {t('plc.stop', 'Stop PLC')}
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn btn-sm"
+          aria-expanded={settings}
+          onClick={() => setSettings((v) => !v)}
+          title={t('plc.settings', 'Settings')}
+        >
+          ⚙
+        </button>
+      </section>
+      {settings && <ConfigPanel key={`${sim.meta.id}:${sim.num('zeroSeconds')}`} sim={sim} />}
+    </>
+  );
+}
+
+// --- device monitor ------------------------------------------------------------
+
+const COMMENTS_KEY = 'shs.plc.comments';
+
+/** Device comments are a label for people, kept in this browser only. */
+function useComments(): [Record<string, string>, (key: string, text: string) => void] {
+  const [comments, setComments] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(COMMENTS_KEY) ?? '{}') as Record<string, string>;
+    } catch {
+      return {};
+    }
+  });
+  const set = (key: string, text: string) =>
+    setComments((c) => {
+      const next = { ...c, [key]: text };
+      if (!text) delete next[key];
+      try {
+        localStorage.setItem(COMMENTS_KEY, JSON.stringify(next));
+      } catch {
+        /* not persisted — still works for this visit */
+      }
+      return next;
+    });
+  return [comments, set];
+}
+
+const hex = (v: number) => (v & 0xffff).toString(16).toUpperCase().padStart(4, '0');
+
+function DeviceMonitor({ sim }: { sim: McPlcSimulator }) {
+  const t = useT();
+  const st = sim.state;
+  const keys = sim.registerKeys();
+  const [comments, setComment] = useComments();
+  const [addr, setAddr] = useState('');
+  const [val, setVal] = useState('0');
+  const [error, setError] = useState<string | null>(null);
+  const [radix, setRadix] = useState<'dec' | 'hex'>('dec');
+  // Rows light up for a moment after the client touched them.
+  const recentAny = keys.some((k) => {
+    const r = st.registers[k];
+    return [r.lastRead, r.lastWrite].some((at) => at && Date.now() - Date.parse(at) < 1500);
+  });
+  const now = useNow(recentAny, 250);
+  const zero = sim.actionState('zero-restore');
+
+  const add = () => {
+    const n = radix === 'hex' ? parseInt(val, 16) : Number(val);
+    const err = sim.addRegister(addr, n);
+    setError(err);
+    if (!err) setAddr('');
+  };
+  const parse = (text: string) => (radix === 'hex' ? parseInt(text.trim(), 16) : Number(text.trim()));
+
+  return (
+    <section className="panel pl-monitor">
+      <div className="panel-head">
+        <span className="panel-title">{t('plc.monitor', 'Device Monitor')}</span>
+        <span className="chip">
+          {keys.length} device
+        </span>
+        <span className="spacer" />
+        <span className="chip t-ok">{t('plc.live', 'served on the next read')}</span>
+      </div>
+      <div className="pl-toolbar">
+        <input
+          className="mono-input"
+          placeholder="D260"
+          aria-label={t('plc.addr', 'Register')}
+          value={addr}
+          spellCheck={false}
+          onChange={(e) => setAddr(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+        />
+        <input
+          className="mono-input"
+          aria-label={t('plc.value', 'Value')}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+        />
+        <button type="button" className="btn btn-sm" onClick={add} disabled={!addr.trim() || st.bridge !== 'up'}>
+          + {t('plc.add', 'Add / Set')}
+        </button>
+        {error && <span className="t-error pl-err">{error}</span>}
+        <span className="spacer" />
+        <div className="pl-radix" role="group" aria-label="DEC / HEX">
+          {(['dec', 'hex'] as const).map((r) => (
+            <button key={r} type="button" aria-pressed={radix === r} onClick={() => setRadix(r)}>
+              {r.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <select
+          className="pl-select"
+          aria-label={t('plc.zero.hold', 'Hold 0 for')}
+          value={sim.num('zeroSeconds')}
+          onChange={(e) => sim.applyConfig({ zeroSeconds: Number(e.target.value) })}
+          disabled={zero.active}
+        >
+          {[3, 5, 10, 20, 30].map((s) => (
+            <option key={s} value={s}>
+              {s} s
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className={`btn btn-sm ${zero.active ? 'btn-running' : 'btn-primary'}`}
+          disabled={zero.disabled}
+          onClick={() => sim.run('zero-restore')}
+          title={sim.actions.find((a) => a.id === 'zero-restore')?.hint}
+        >
+          ⟲ {zero.active ? t('plc.zero.holding', 'Holding 0…') : t('plc.zero', 'Zero & Restore')}
+        </button>
+      </div>
+
+      {keys.length === 0 ? (
+        <p className="empty">
+          {t('plc.empty', 'No registers yet. Add one above, or just start your program — every register it reads appears here.')}
+        </p>
+      ) : (
+        <div className="scroll-x">
+          <table className="pl-table">
+            <thead>
+              <tr>
+                <th style={{ width: 92 }}>Device</th>
+                <th>{t('plc.comment', 'Comment')}</th>
+                <th style={{ width: 196 }}>{t('plc.value', 'Value')} ({radix.toUpperCase()})</th>
+                <th style={{ width: 80 }}>{radix === 'dec' ? 'HEX' : 'DEC'}</th>
+                <th>{t('plc.reads', 'Read by client')}</th>
+                <th>{t('plc.writes', 'Written by client')}</th>
+                <th style={{ width: 40 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {keys.map((k) => {
+                const r = st.registers[k];
+                const read = !!r.lastRead && now - Date.parse(r.lastRead) < 1500;
+                const wrote = !!r.lastWrite && now - Date.parse(r.lastWrite) < 1500;
+                const shown = radix === 'dec' ? String(r.value) : hex(r.value);
+                const commit = (text: string) => {
+                  const n = parse(text);
+                  if (text.trim() !== '' && Number.isFinite(n) && n !== r.value) sim.setRegister(k, n);
+                };
+                return (
+                  <tr key={k} className={wrote ? 'write' : read ? 'read' : ''}>
+                    <td className="pl-dev">{k}</td>
+                    <td>
+                      <input
+                        className="pl-comment"
+                        value={comments[k] ?? ''}
+                        placeholder={t('plc.comment.hint', 'add a comment')}
+                        aria-label={`${k} comment`}
+                        onChange={(e) => setComment(k, e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <span className="pl-valbox">
+                        <input
+                          key={`${k}:${r.value}:${radix}`}
+                          defaultValue={shown}
+                          aria-label={`${k} value`}
+                          onBlur={(e) => commit(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                          disabled={st.bridge !== 'up'}
+                        />
+                        <button type="button" aria-label={`${k} − 1`} onClick={() => sim.setRegister(k, r.value - 1)} disabled={st.bridge !== 'up'}>
+                          −
+                        </button>
+                        <button type="button" aria-label={`${k} + 1`} onClick={() => sim.setRegister(k, r.value + 1)} disabled={st.bridge !== 'up'}>
+                          +
+                        </button>
+                      </span>
+                    </td>
+                    <td className="pl-dim">{radix === 'dec' ? hex(r.value) : r.value}</td>
+                    <td className="pl-dim">
+                      {r.reads ? `${r.reads}× · ${new Date(r.lastRead!).toLocaleTimeString([], { hour12: false })}` : '—'}{' '}
+                      {read && <span className="pl-flag r">READ</span>}
+                    </td>
+                    <td className="pl-dim">
+                      {r.writes ? `${r.writes}× · ${new Date(r.lastWrite!).toLocaleTimeString([], { hour12: false })}` : '—'}{' '}
+                      {wrote && <span className="pl-flag w">WRITE</span>}
+                    </td>
+                    <td>
+                      <button type="button" className="pl-x" aria-label={`Remove ${k}`} onClick={() => sim.removeRegister(k)}>
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="panel-note">
+        {t(
+          'plc.note',
+          'Signed 16-bit words, as node-mc_protocol reads them. D and R are numbered in decimal, W in hex. Values are committed on Enter or when the field loses focus, so a client polling mid-typing never reads a half-typed value. Comments stay in this browser — your program still reads D11.',
+        )}
+      </p>
+    </section>
+  );
+}
+
+// --- frame decoder -----------------------------------------------------------------
+
+type Seg = { bytes: string[]; kind: number; label: string; meaning: string };
+
+const END_CODES: Record<string, string> = {
+  '0000': 'OK',
+  C051: 'too many points',
+  C056: 'device not supported / out of range',
+  C059: 'command not supported',
+};
+
+function bytesOf(line: string | undefined): string[] {
+  return (line ?? '').trim().split(/\s+/).filter((b) => /^[0-9A-F]{2}$/i.test(b));
+}
+const word = (b: string[]) => b.slice().reverse().join('');
+
+/** Cuts a 3E binary request into its fields, Q or iQ-R layout by the sub-command. */
+function splitRequest(b: string[]): Seg[] {
+  if (b.length < 15) return [{ bytes: b, kind: 6, label: 'Bytes', meaning: '' }];
+  const sub = word(b.slice(13, 15));
+  const iqr = sub === '0002' || sub === '0003';
+  const cmd = word(b.slice(11, 13));
+  const at = iqr ? [15, 19, 21, 23] : [15, 18, 19, 21];
+  const no = parseInt(word(b.slice(at[0], at[1])), 16);
+  const code = word(b.slice(at[1], at[2]));
+  const dev = { A8: 'D', AF: 'R', B4: 'W' }[code.slice(-2)] ?? `?${code}`;
+  const segs: Seg[] = [
+    { bytes: b.slice(0, 2), kind: 1, label: 'Subheader', meaning: `${b[0]}${b[1]} · 3E request` },
+    { bytes: b.slice(2, 7), kind: 2, label: 'Route', meaning: `net ${b[2]} · PC ${b[3]} · I/O ${word(b.slice(4, 6))} · st ${b[6]}` },
+    { bytes: b.slice(7, 11), kind: 6, label: 'Length · timer', meaning: `${parseInt(word(b.slice(7, 9)), 16)} byte · ${parseInt(word(b.slice(9, 11)), 16) * 0.25} s` },
+    { bytes: b.slice(11, 15), kind: 3, label: 'Command', meaning: `${cmd} ${cmd === '0401' ? 'batch read' : cmd === '1401' ? 'batch write' : ''} · sub ${sub} (${iqr ? 'iQ-R' : 'Q'})` },
+    { bytes: b.slice(at[0], at[2]), kind: 4, label: 'Device', meaning: `${dev}${dev === 'W' ? no.toString(16).toUpperCase() : no} (code ${code.slice(-2)})` },
+    { bytes: b.slice(at[2], at[3]), kind: 5, label: 'Points', meaning: `${parseInt(word(b.slice(at[2], at[3])), 16)} word` },
+  ];
+  if (b.length > at[3]) segs.push({ bytes: b.slice(at[3]), kind: 6, label: 'Data', meaning: `${(b.length - at[3]) / 2} word(s) to write` });
+  return segs;
+}
+
+function splitResponse(b: string[]): Seg[] {
+  if (b.length < 11) return [{ bytes: b, kind: 6, label: 'Bytes', meaning: '' }];
+  const end = word(b.slice(9, 11));
+  const segs: Seg[] = [
+    { bytes: b.slice(0, 2), kind: 1, label: 'Subheader', meaning: 'D000 · 3E response' },
+    { bytes: b.slice(2, 7), kind: 2, label: 'Route', meaning: 'echoed' },
+    { bytes: b.slice(7, 9), kind: 6, label: 'Length', meaning: `${parseInt(word(b.slice(7, 9)), 16)} byte` },
+    { bytes: b.slice(9, 11), kind: end === '0000' ? 4 : 5, label: 'End code', meaning: `${end} ${END_CODES[end] ?? ''}` },
+  ];
+  if (b.length > 11) segs.push({ bytes: b.slice(11), kind: 5, label: 'Data', meaning: `${(b.length - 11) / 2} word(s)` });
+  return segs;
+}
+
+function FrameDecoder({ ev, pinned }: { ev: SimEvent | null; pinned: boolean }) {
+  const t = useT();
+  const detail = ev?.transport?.detail ?? '';
+  const line = (name: string) => detail.split('\n').find((l) => l.startsWith(name))?.slice(name.length);
+  const req = bytesOf(line('request'));
+  const res = bytesOf(line('response'));
+  const p = (ev?.payload ?? {}) as { client?: string; device?: string; values?: number[]; end_code?: string };
+  const head =
+    ev?.name === 'MC_READ' ? '0401 · batch read' : ev?.name === 'MC_WRITE' ? '1401 · batch write' : ev?.name === 'MC_ERROR' ? 'refused' : ev ? 'no answer' : '';
+
+  const row = (segs: Seg[]) => (
+    <>
+      <div className="pl-bytes">
+        {segs.map((s, i) => (
+          <span key={i} className={`pl-k${s.kind}`}>
+            {s.bytes.join(' ')}
+          </span>
+        ))}
+      </div>
+      <dl className="pl-fields">
+        {segs.map((s, i) => (
+          <div key={i}>
+            <dt>
+              <i className={`pl-k${s.kind}`} />
+              {s.label}
+            </dt>
+            <dd>{s.meaning}</dd>
+          </div>
+        ))}
+      </dl>
+    </>
+  );
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <span className="panel-title">{t('plc.decoder', 'Frame Decoder')}</span>
+        <span className="spacer" />
+        {pinned && <span className="chip">{t('plc.decoder.pinned', 'selected')}</span>}
+        {head && <span className="chip t-active">{head}</span>}
+      </div>
+      {!ev ? (
+        <p className="empty">{t('plc.decoder.empty', 'No frame yet. When your program reads or writes, its bytes are taken apart here.')}</p>
+      ) : (
+        <div className="pl-frame">
+          <h5>
+            Request <span className="mono">← {p.client}</span>
+          </h5>
+          {row(splitRequest(req))}
+          <h5>Response</h5>
+          {res.length ? row(splitResponse(res)) : <p className="muted">{t('plc.decoder.none', 'No answer — the PLC is silent.')}</p>}
+          {ev.name === 'MC_READ' && (
+            <div className="pl-decoded">
+              End code <b>0000</b> (OK) · <b>{p.device} = {(p.values ?? []).join(', ')}</b>
+            </div>
+          )}
+          {ev.name === 'MC_WRITE' && (
+            <div className="pl-decoded">
+              End code <b>0000</b> (OK) · <b>{p.device} ← {(p.values ?? []).join(', ')}</b>
+            </div>
+          )}
+          {ev.name === 'MC_ERROR' && <div className="pl-decoded bad">End code <b>{p.end_code}</b></div>}
+        </div>
+      )}
+    </section>
+  );
+}
