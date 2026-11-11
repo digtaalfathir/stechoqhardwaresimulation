@@ -158,7 +158,7 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
       key: 'interval',
       label: 'Report Interval',
       type: 'number',
-      default: 7000,
+      default: 3000,
       min: 500,
       max: 60000,
       step: 500,

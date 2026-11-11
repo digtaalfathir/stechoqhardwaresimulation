@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { LOAD_SIZE, type GateSweep, type RfidReaderSimulator } from '../../simulators/rfid/rfid-reader';
 import type { SimEvent } from '../../simulators/core/types';
 import { useSimulator } from '../../lib/use-simulator';
@@ -9,7 +9,7 @@ import { CommunicationLog, ConfigPanel } from '../workspace';
 import { GateScene } from './gate-scene';
 import './gate.css';
 
-const INTERVALS = [3000, 7000, 15000];
+const INTERVALS = [7000, 3000, 1000];
 
 /**
  * The gate workspace: the portal and the forklift going through it, the
@@ -28,8 +28,7 @@ export function GateWorkspace({ sim }: { sim: RfidReaderSimulator }) {
 
   return (
     <>
-      {/* Re-read when the HUD changes the interval, so the form never shows a stale value. */}
-      <ConfigPanel key={`${sim.meta.id}:${sim.num('interval')}`} sim={sim} />
+      <ConfigBar sim={sim} />
       <div className="gt-layout">
         <div className="gt-main">
           <Stage sim={sim} />
@@ -68,9 +67,71 @@ function useClock(active: boolean, ms = 200) {
   return Date.now();
 }
 
+/**
+ * The settings, folded to one line so the scene gets the screen: the values
+ * that matter at a glance, and the full form a click away.
+ */
+function ConfigBar({ sim }: { sim: RfidReaderSimulator }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  if (open) {
+    return (
+      <div className="gt-config-open">
+        {/* Re-read when the HUD changes the interval, so the form never shows a stale value. */}
+        <ConfigPanel key={`${sim.meta.id}:${sim.num('interval')}`} sim={sim} />
+        <button type="button" className="btn btn-sm gt-config-close" onClick={() => setOpen(false)}>
+          {t('gt.config.close', 'Close settings')}
+        </button>
+      </div>
+    );
+  }
+  const item = (label: string, value: string) => (
+    <span className="gt-config-item">
+      <span className="muted">{label}</span> <b className="mono">{value}</b>
+    </span>
+  );
+  return (
+    <section className="panel gt-config">
+      <span className="panel-title">{t('gt.config', 'Gate')}</span>
+      {item('Base URL', sim.cfg('baseUrl'))}
+      {item('Endpoint', sim.cfg('endpoint'))}
+      {item('Reader', sim.cfg('reader_id'))}
+      {item('Antenna', sim.cfg('antenna'))}
+      {item(t('gt.interval', 'Report interval'), `${sim.num('interval') / 1000} s`)}
+      <span className="spacer" />
+      <button type="button" className="btn btn-sm" onClick={() => setOpen(true)} disabled={sim.state.pass !== null}>
+        {t('gt.config.edit', 'Edit settings')}
+      </button>
+    </section>
+  );
+}
+
 function Stage({ sim }: { sim: RfidReaderSimulator }) {
   const t = useT();
   const st = sim.state;
+  const box = useRef<HTMLElement>(null);
+  const [height, setHeight] = useState<number>();
+
+  // Like the handheld: the whole scene fits in what is left of the window
+  // below the header, so nothing is cut off and nothing needs scrolling.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const fit = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const room = window.innerHeight - Math.min(top, window.innerHeight * 0.45) - 16;
+      const byWidth = (el.clientWidth * 600) / 960 + 90;
+      setHeight(Math.round(Math.max(420, Math.min(room, byWidth))));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    window.addEventListener('resize', fit);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', fit);
+    };
+  }, []);
   const pass = st.pass;
   const now = useClock(pass !== null);
   const interval = Math.max(500, sim.num('interval'));
@@ -91,7 +152,7 @@ function Stage({ sim }: { sim: RfidReaderSimulator }) {
   const nowCount = pass ? st.readNow.length : 0;
 
   return (
-    <section className="panel gt-stage">
+    <section className="panel gt-stage" ref={box} style={{ height }}>
       <GateScene sim={sim} />
 
       <div className="gt-hud">

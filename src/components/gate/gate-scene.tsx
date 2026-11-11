@@ -250,7 +250,13 @@ export function GateScene({ sim }: { sim: RfidReaderSimulator }) {
   const age = last ? t - Date.parse(last.at) : Infinity;
 
   return (
-    <svg className="gt-scene" viewBox={`0 0 ${SCENE.width} ${SCENE.height}`} role="img" aria-label="RFID gate with a forklift">
+    <svg
+      className="gt-scene"
+      viewBox={`0 0 ${SCENE.width} ${SCENE.height}`}
+      preserveAspectRatio="xMidYMid meet"
+      role="img"
+      aria-label="RFID gate with a forklift"
+    >
       <defs>
         <filter id="gt-glow" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="2.4" result="b" />

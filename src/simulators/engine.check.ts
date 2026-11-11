@@ -572,7 +572,7 @@ async function main() {
     batches.push([...(body as { idHex: string[] }).idHex]);
     return accepted;
   };
-  assert(gate.configFields.find((f) => f.key === 'interval')?.default === 7000, 'the gate defaults to a 7s interval');
+  assert(gate.configFields.find((f) => f.key === 'interval')?.default === 3000, 'the gate defaults to a 3s interval');
   assert(
     gate.actions.map((a) => a.id).join(',') === 'pass,stop-pass,reset',
     'the gate offers a pass, stop and reset only',
