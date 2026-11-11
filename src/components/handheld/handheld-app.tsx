@@ -503,16 +503,20 @@ function SettingsScreen({
   }, [draftPower, savedPower]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => sim.setPowerPreview(null), [sim]);
 
-  // A code the new host does not know is cleared, so it never reaches that host.
-  useEffect(() => {
-    if (st.master !== 'ready' || st.masterFrom !== base) return;
+  // A code the new host does not know never reaches that host: it falls back to
+  // the host's first value, as an empty one does, so the form is always usable.
+  const withHostDefaults = (d: Config): Config => {
     const rrs = sim.rrTypes();
     const codes = sim.factories().map((f) => f.code);
-    setDraft((d) => ({
+    return {
       ...d,
-      rr_type: rrs.includes(String(d.rr_type)) ? d.rr_type : '',
-      factory_code: codes.includes(String(d.factory_code)) ? d.factory_code : '',
-    }));
+      rr_type: rrs.includes(String(d.rr_type)) ? d.rr_type : rrs[0] ?? '',
+      factory_code: codes.includes(String(d.factory_code)) ? d.factory_code : codes[0] ?? '',
+    };
+  };
+  useEffect(() => {
+    if (st.master !== 'ready' || st.masterFrom !== base) return;
+    setDraft(withHostDefaults);
   }, [st.master, st.masterFrom]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = (): boolean => {
@@ -689,7 +693,7 @@ function SettingsScreen({
                 className="m-btn filled small danger"
                 onClick={() => {
                   // Never the language: Reset leaves it alone, like the app.
-                  setDraft({ ...sim.defaultConfig(), lang: draft.lang });
+                  setDraft(withHostDefaults({ ...sim.defaultConfig(), lang: draft.lang }));
                   setDialog(null);
                 }}
               >

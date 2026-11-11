@@ -217,7 +217,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     },
     // Options are replaced with the host's own lists once master data loads.
     { key: 'rr_type', label: 'RR Type', type: 'combo', default: '', options: [...RR_TYPES], mono: true },
-    { key: 'maker_name', label: 'Maker Name', type: 'text', default: '' },
+    { key: 'maker_name', label: 'Maker Name', type: 'text', default: 'Stechoq' },
     { key: 'factory_code', label: 'Factory Code', type: 'combo', default: '', options: [], mono: true },
     { key: 'initial_year', label: 'Initial Year', type: 'select', default: '2026', options: YEARS },
     { key: 'antenna', label: 'Antenna', type: 'select', default: '1', options: ANTENNAS },
@@ -363,7 +363,20 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       this.factoryField.optionLabels = factoryLabels(data.factories);
       patch.factories = data.factories;
     }
-    this.setState(patch);
+    this.state = { ...this.state, ...patch };
+    this.fillDefaults();
+    this.setState({});
+  }
+
+  /**
+   * A fresh device is usable at once: an empty RR Type or Factory Code takes
+   * the first value the host lists. A value already chosen is never touched.
+   */
+  private fillDefaults() {
+    const rr = this.rrTypes();
+    const factories = this.state.factories;
+    if (!this.cfg('rr_type').trim() && rr.length) this.config.rr_type = rr[0];
+    if (!this.cfg('factory_code').trim() && factories.length) this.config.factory_code = factories[0].code;
   }
 
   masterUrls() {

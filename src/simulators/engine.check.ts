@@ -376,8 +376,10 @@ async function main() {
   const rrField = () => master.configFields.find((f) => f.key === 'rr_type')!;
   const facField = () => master.configFields.find((f) => f.key === 'factory_code')!;
 
+  assert(master.cfg('maker_name') === 'Stechoq', 'Maker Name has a default');
   await master.ensureMasterData();
   assert(fetches.length === 1, 'opening the workspace reads the master data once');
+  assert(master.cfg('rr_type') === 'T1B' && master.cfg('factory_code') === '5022', 'an empty RR Type and Factory Code take the first host values');
   assert(master.state.master === 'ready', 'the device reports the lists as ready');
   assert(
     JSON.stringify(rrField().options) === JSON.stringify(['T1B', 'T1R', 'SP3']),
@@ -406,6 +408,9 @@ async function main() {
   assert(fetches[1] === 'https://product.suite.stechoq-j.com', 'and reads from the new host');
   await master.ensureMasterData(true);
   assert(fetches.length === 3, 'a retry forces a reload');
+  master.applyConfig({ factory_code: '721B' });
+  await master.ensureMasterData(true);
+  assert(master.cfg('factory_code') === '721B', 'a value already picked is never replaced by the default');
 
   // A failed read keeps whatever is usable and says what happened.
   const broken = new RfidHandheldSimulator();
