@@ -921,3 +921,92 @@
 .pl-decoded b {
   font-family: var(--mono);
 }
+
+/* bit devices: 16 to a row, the way a word read sees them */
+.pl-bits {
+  border-top: 1px solid var(--line);
+}
+.pl-bits-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 8px 12px;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--line);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.pl-bits-head .muted {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 12px;
+}
+.pl-bits-grid {
+  min-width: 820px;
+}
+.pl-bitrow {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) 52px 170px 36px;
+  align-items: center;
+  gap: 0 12px;
+  padding: 6px 0 6px 12px;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.4s;
+}
+.pl-bitrow.write {
+  background: var(--warn-bg);
+}
+.pl-bitrow.read .pl-led {
+  background: var(--active);
+  box-shadow: 0 0 0 3px var(--active-bg);
+}
+.pl-bitrow.write .pl-led {
+  background: #e8901f;
+  box-shadow: 0 0 0 3px var(--warn-bg);
+}
+.pl-bitrow .pl-dev small {
+  font-weight: 400;
+  color: var(--ink-3);
+  margin-left: 1px;
+}
+.pl-bitcells {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(20px, 26px));
+  gap: 3px;
+}
+.pl-bitcells button {
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.pl-bitcells button:nth-child(8n) {
+  margin-right: 4px;
+}
+.pl-bitcells button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.pl-bitcells button.on {
+  background: #17a55f;
+  border-color: #128a4f;
+  color: #fff;
+  font-weight: 700;
+}
+.pl-bitcells button.absent {
+  border-style: dashed;
+  opacity: 0.55;
+}
+.pl-word {
+  text-align: right;
+  color: var(--ink-2);
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { McPlcSimulator, PlcMode } from '../../simulators/plc/mc-plc';
+import { deviceKey, isBitKey, splitKey, type McPlcSimulator, type PlcMode } from '../../simulators/plc/mc-plc';
 import type { SimEvent } from '../../simulators/core/types';
 import { useSimulator } from '../../lib/use-simulator';
 import { useT } from '../../lib/i18n';
@@ -176,14 +176,16 @@ const hex = (v: number) => (v & 0xffff).toString(16).toUpperCase().padStart(4, '
 function DeviceMonitor({ sim }: { sim: McPlcSimulator }) {
   const t = useT();
   const st = sim.state;
-  const keys = sim.registerKeys();
+  const all = sim.registerKeys();
+  const keys = all.filter((k) => !isBitKey(k));
+  const bitKeys = all.filter(isBitKey);
   const [comments, setComment] = useComments('shs.plc.comments');
   const [addr, setAddr] = useState('');
   const [val, setVal] = useState('0');
   const [error, setError] = useState<string | null>(null);
   const [radix, setRadix] = useState<'dec' | 'hex'>('dec');
   // Rows light up for a moment after the client touched them.
-  const recentAny = keys.some((k) => {
+  const recentAny = all.some((k) => {
     const r = st.registers[k];
     return [r.lastRead, r.lastWrite].some((at) => at && Date.now() - Date.parse(at) < 1500);
   });
@@ -203,7 +205,7 @@ function DeviceMonitor({ sim }: { sim: McPlcSimulator }) {
       <div className="panel-head">
         <span className="panel-title">{t('plc.monitor', 'Device Monitor')}</span>
         <span className="chip">
-          {keys.length} device
+          {all.length} device
         </span>
         <span className="spacer" />
         <span className="chip t-ok">{t('plc.live', 'served on the next read')}</span>
@@ -261,11 +263,11 @@ function DeviceMonitor({ sim }: { sim: McPlcSimulator }) {
         </button>
       </div>
 
-      {keys.length === 0 ? (
+      {all.length === 0 ? (
         <p className="empty">
           {t('plc.empty', 'No registers yet. Add one above, or just start your program — every register it reads appears here.')}
         </p>
-      ) : (
+      ) : keys.length === 0 ? null : (
         <div className="scroll-x">
           {/* Fixed columns: the client reading every second must never move the value box. */}
           <table className="pl-table">
@@ -350,19 +352,108 @@ function DeviceMonitor({ sim }: { sim: McPlcSimulator }) {
           </table>
         </div>
       )}
+      {bitKeys.length > 0 && <BitBlocks sim={sim} keys={bitKeys} now={now} />}
       <p className="panel-note">
         {t(
-          'plc.note',
-          'Signed 16-bit words, as node-mc_protocol reads them. D and R are numbered in decimal, W in hex. Values are committed on Enter or when the field loses focus, so a client polling mid-typing never reads a half-typed value. Comments stay in this browser — your program still reads D11.',
+          'plc.note2',
+          'Words are signed 16-bit, as node-mc_protocol reads them; bits (M, L, B, X, Y, SM) are one per address and read as words 16 at a time, the lowest address in bit 0. D, R, M and L count in decimal; W, B, X and Y in hex. Values are committed on Enter or when the field loses focus, so a client polling mid-typing never reads a half-typed value. Comments stay in this browser.',
         )}
       </p>
     </section>
   );
 }
 
+/**
+ * Bit devices, 16 to a row the way a word read sees them: click a bit to flip
+ * it. Bits the client has not touched yet are drawn faint and can still be set.
+ */
+function BitBlocks({ sim, keys, now }: { sim: McPlcSimulator; keys: string[]; now: number }) {
+  const t = useT();
+  const st = sim.state;
+  const up = st.bridge === 'up';
+  const blocks = new Map<string, { dev: string; base: number }>();
+  for (const k of keys) {
+    const { dev, no } = splitKey(k);
+    const base = no - (no % 16);
+    blocks.set(deviceKey(dev, base), { dev, base });
+  }
+  const recent = (at: string | null) => !!at && now - Date.parse(at) < 1500;
+  return (
+    <div className="pl-bits">
+      <div className="pl-bits-head">
+        <span>{t('plc.bits', 'Bit devices')}</span>
+        <span className="muted">{t('plc.bits.hint', 'click a bit to flip it · word = how getWords reads the row')}</span>
+      </div>
+      <div className="scroll-x">
+        <div className="pl-bits-grid">
+          {[...blocks.entries()].map(([id, { dev, base }]) => {
+            const cells = Array.from({ length: 16 }, (_, j) => {
+              const key = deviceKey(dev, base + j);
+              return { key, j, r: st.registers[key] };
+            });
+            const word = cells.reduce((v, c) => v | ((c.r?.value ?? 0) & 1) << c.j, 0);
+            const present = cells.filter((c) => c.r).map((c) => c.r!);
+            const reads = Math.max(0, ...present.map((r) => r.reads));
+            const lastRead = present.map((r) => r.lastRead).filter(Boolean).sort().pop() ?? null;
+            const lastWrite = present.map((r) => r.lastWrite).filter(Boolean).sort().pop() ?? null;
+            const cls = recent(lastWrite) ? 'write' : recent(lastRead) ? 'read' : '';
+            return (
+              <div key={id} className={`pl-bitrow ${cls}`}>
+                <span className="pl-dev">
+                  <i className="pl-led" aria-hidden="true" />
+                  {id}
+                  <small>–{deviceKey(dev, base + 15).slice(dev.length)}</small>
+                </span>
+                <span className="pl-bitcells" role="group" aria-label={`${id} bits`}>
+                  {cells.map(({ key, j, r }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`${r ? (r.value ? 'on' : '') : 'absent'}`}
+                      aria-pressed={!!r?.value}
+                      title={`${key} = ${r?.value ?? 0}`}
+                      disabled={!up}
+                      onClick={() => sim.setRegister(key, r?.value ? 0 : 1)}
+                    >
+                      {j.toString(16).toUpperCase()}
+                    </button>
+                  ))}
+                </span>
+                <span className="pl-dim pl-word" title={`${id} as a word`}>
+                  {hex(word)}
+                </span>
+                <span className="pl-dim">
+                  <span className="pl-stamp">
+                    {reads ? `${reads}× · ${new Date(lastRead!).toLocaleTimeString([], { hour12: false })}` : '—'}
+                  </span>
+                  <span className={`pl-flag ${cls === 'write' ? 'w' : 'r'}${cls ? ' on' : ''}`}>{cls === 'write' ? 'WRITE' : 'READ'}</span>
+                </span>
+                <button
+                  type="button"
+                  className="pl-x"
+                  aria-label={`Remove ${id}`}
+                  onClick={() => cells.forEach((c) => c.r && sim.removeRegister(c.key))}
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- frame decoder -----------------------------------------------------------------
 
 type Seg = { bytes: string[]; kind: number; label: string; meaning: string };
+
+/** Device codes the bridge serves, as they appear in a 3E frame. */
+const DEVICE_CODES: Record<string, string> = {
+  A8: 'D', AF: 'R', B4: 'W', A9: 'SD', B0: 'ZR',
+  '90': 'M', '92': 'L', A0: 'B', '9C': 'X', '9D': 'Y', '91': 'SM',
+};
 
 const END_CODES: Record<string, string> = {
   '0000': 'OK',
@@ -381,20 +472,35 @@ function splitRequest(b: string[]): Seg[] {
   if (b.length < 15) return [{ bytes: b, kind: 6, label: 'Bytes', meaning: '' }];
   const sub = word(b.slice(13, 15));
   const iqr = sub === '0002' || sub === '0003';
+  const bitUnits = sub === '0001' || sub === '0003';
   const cmd = word(b.slice(11, 13));
   const at = iqr ? [15, 19, 21, 23] : [15, 18, 19, 21];
   const no = parseInt(word(b.slice(at[0], at[1])), 16);
   const code = word(b.slice(at[1], at[2]));
-  const dev = { A8: 'D', AF: 'R', B4: 'W' }[code.slice(-2)] ?? `?${code}`;
+  const dev = DEVICE_CODES[code.slice(-2)];
+  const n = parseInt(word(b.slice(at[2], at[3])), 16);
   const segs: Seg[] = [
     { bytes: b.slice(0, 2), kind: 1, label: 'Subheader', meaning: `${b[0]}${b[1]} · 3E request` },
     { bytes: b.slice(2, 7), kind: 2, label: 'Route', meaning: `net ${b[2]} · PC ${b[3]} · I/O ${word(b.slice(4, 6))} · st ${b[6]}` },
     { bytes: b.slice(7, 11), kind: 6, label: 'Length · timer', meaning: `${parseInt(word(b.slice(7, 9)), 16)} byte · ${parseInt(word(b.slice(9, 11)), 16) * 0.25} s` },
-    { bytes: b.slice(11, 15), kind: 3, label: 'Command', meaning: `${cmd} ${cmd === '0401' ? 'batch read' : cmd === '1401' ? 'batch write' : ''} · sub ${sub} (${iqr ? 'iQ-R' : 'Q'})` },
-    { bytes: b.slice(at[0], at[2]), kind: 4, label: 'Device', meaning: `${dev}${dev === 'W' ? no.toString(16).toUpperCase() : no} (code ${code.slice(-2)})` },
-    { bytes: b.slice(at[2], at[3]), kind: 5, label: 'Points', meaning: `${parseInt(word(b.slice(at[2], at[3])), 16)} word` },
+    { bytes: b.slice(11, 15), kind: 3, label: 'Command', meaning: `${cmd} ${cmd === '0401' ? 'batch read' : cmd === '1401' ? 'batch write' : ''} · sub ${sub} (${iqr ? 'iQ-R' : 'Q'}${bitUnits ? ', bit units' : ''})` },
+    {
+      bytes: b.slice(at[0], at[2]),
+      kind: 4,
+      label: 'Device',
+      meaning: dev ? `${deviceKey(dev, no)} (code ${code.slice(-2)})` : `code ${code.slice(-2)} — not served`,
+    },
+    {
+      bytes: b.slice(at[2], at[3]),
+      kind: 5,
+      label: 'Points',
+      meaning: bitUnits ? `${n} bit` : dev && isBitKey(dev + '0') ? `${n} word = ${n * 16} bit` : `${n} word`,
+    },
   ];
-  if (b.length > at[3]) segs.push({ bytes: b.slice(at[3]), kind: 6, label: 'Data', meaning: `${(b.length - at[3]) / 2} word(s) to write` });
+  if (b.length > at[3]) {
+    const bytes = b.length - at[3];
+    segs.push({ bytes: b.slice(at[3]), kind: 6, label: 'Data', meaning: bitUnits ? `${n} bit(s) to write, 2 per byte` : `${bytes / 2} word(s) to write` });
+  }
   return segs;
 }
 
@@ -407,7 +513,7 @@ function splitResponse(b: string[]): Seg[] {
     { bytes: b.slice(7, 9), kind: 6, label: 'Length', meaning: `${parseInt(word(b.slice(7, 9)), 16)} byte` },
     { bytes: b.slice(9, 11), kind: end === '0000' ? 4 : 5, label: 'End code', meaning: `${end} ${END_CODES[end] ?? ''}` },
   ];
-  if (b.length > 11) segs.push({ bytes: b.slice(11), kind: 5, label: 'Data', meaning: `${(b.length - 11) / 2} word(s)` });
+  if (b.length > 11) segs.push({ bytes: b.slice(11), kind: 5, label: 'Data', meaning: `${b.length - 11} byte` });
   return segs;
 }
 

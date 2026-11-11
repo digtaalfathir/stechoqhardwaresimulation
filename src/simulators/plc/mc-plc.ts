@@ -92,14 +92,29 @@ function saveSession(base: string, s: Session | null) {
   }
 }
 
-/** "D11", "w1a", "R 5" -> "D11" / "W1A" / "R5"; W is numbered in hex, like on the PLC. */
+/** Devices the bridge serves (public/mc-plc.mjs). X, Y, B and W count in hex, like on the PLC. */
+const HEX_DEVICES = new Set(['W', 'B', 'X', 'Y']);
+const BIT_DEVICES = new Set(['M', 'L', 'B', 'X', 'Y', 'SM']);
+
+export const deviceKey = (dev: string, no: number) => dev + (HEX_DEVICES.has(dev) ? no.toString(16).toUpperCase() : String(no));
+
+/** "M16000" -> { dev: 'M', no: 16000 }; "X1F" -> { dev: 'X', no: 31 }. */
+export function splitKey(key: string): { dev: string; no: number } {
+  const dev = /^[A-Z]+/.exec(key)?.[0] ?? '';
+  return { dev, no: parseInt(key.slice(dev.length), HEX_DEVICES.has(dev) ? 16 : 10) };
+}
+
+/** One bit per address (M, L, B, X, Y, SM) rather than a 16-bit word. */
+export const isBitKey = (key: string) => BIT_DEVICES.has(splitKey(key).dev);
+
+/** "D11", "w1a", "m16000", "x1f" -> "D11" / "W1A" / "M16000" / "X1F", or null. */
 export function parseRegister(text: string): string | null {
-  const m = /^\s*([DRW])\s*([0-9A-F]+)\s*$/i.exec(text);
+  const m = /^\s*(SM|SD|ZR|[DRWMLBXY])\s*([0-9A-F]+)\s*$/i.exec(text);
   if (!m) return null;
   const dev = m[1].toUpperCase();
-  const no = parseInt(m[2], dev === 'W' ? 16 : 10);
-  if (!Number.isFinite(no)) return null;
-  return dev + (dev === 'W' ? no.toString(16).toUpperCase() : String(no));
+  const hexNo = HEX_DEVICES.has(dev);
+  if (!hexNo && !/^[0-9]+$/.test(m[2])) return null;
+  return deviceKey(dev, parseInt(m[2], hexNo ? 16 : 10));
 }
 
 const toInt16 = (v: number) => ((((Math.trunc(v) + 32768) % 65536) + 65536) % 65536) - 32768;
@@ -120,9 +135,9 @@ export class McPlcSimulator extends Simulator<PlcState> {
     name: 'PLC (MC Protocol)',
     category: 'Factory Devices',
     icon: 'cpu',
-    tagline: 'Mitsubishi PLC register memory served over MC Protocol 3E — edit D registers live.',
+    tagline: 'Mitsubishi PLC device memory served over MC Protocol 3E — edit D registers and M bits live.',
     description:
-      'Simulates a Mitsubishi Q / iQ-R PLC for data-acquisition programs. Run the one-line command the workspace shows (it only needs Node) and you get a PLC on localhost: point your program at the address shown and it answers MC Protocol 3E binary batch reads and writes exactly as the CPU would. This workspace edits that register memory live and shows every request your program makes, byte for byte. Registers appear by themselves as soon as a client reads them. The PLC can also be taken offline (connection refused) or made silent (connected but never answering) to test reconnect and timeout handling.',
+      'Simulates a Mitsubishi Q / iQ-R PLC for data-acquisition programs. Run the one-line command the workspace shows (it only needs Node) and you get a PLC on localhost: point your program at the address shown and it answers MC Protocol 3E binary batch reads and writes — word devices (D, R, W, SD, ZR) and bit devices (M, L, B, X, Y, SM), in word or bit units — exactly as the CPU would. This workspace edits that register memory live and shows every request your program makes, byte for byte. Registers appear by themselves as soon as a client reads them. The PLC can also be taken offline (connection refused) or made silent (connected but never answering) to test reconnect and timeout handling.',
     protocols: ['MC Protocol 3E'],
   };
 
@@ -395,7 +410,7 @@ export class McPlcSimulator extends Simulator<PlcState> {
 
   /** Sets one register now; the bridge serves it on the next client read. */
   setRegister(key: string, value: number) {
-    const v = toInt16(value);
+    const v = isBitKey(key) ? (value ? 1 : 0) : toInt16(value);
     const cur = this.state.registers[key] ?? { reads: 0, writes: 0, lastRead: null, lastWrite: null };
     this.editSeq++;
     this.setState({ registers: { ...this.state.registers, [key]: { ...cur, value: v } } });
@@ -405,7 +420,7 @@ export class McPlcSimulator extends Simulator<PlcState> {
   /** Returns an error message, or null when the register was added. */
   addRegister(text: string, value: number): string | null {
     const key = parseRegister(text);
-    if (!key) return 'Use D, R or W followed by a number — e.g. D11, R100, W1A';
+    if (!key) return 'Use a device and its number — e.g. D11, R100, W1A, M16000, X1F';
     if (!Number.isFinite(value)) return 'Value must be a number';
     this.setRegister(key, value);
     return null;
@@ -431,10 +446,13 @@ export class McPlcSimulator extends Simulator<PlcState> {
     void this.push({ [key]: null }, `${key} removed`);
   }
 
-  /** Device letter first, then the number the way the PLC counts it. */
+  /** Device name first, then the number the way the PLC counts it. */
   registerKeys(): string[] {
-    const no = (k: string) => parseInt(k.slice(1), k[0] === 'W' ? 16 : 10);
-    return Object.keys(this.state.registers).sort((a, b) => a[0].localeCompare(b[0]) || no(a) - no(b));
+    return Object.keys(this.state.registers).sort((a, b) => {
+      const x = splitKey(a);
+      const y = splitKey(b);
+      return x.dev.localeCompare(y.dev) || x.no - y.no;
+    });
   }
 
   // --- actions --------------------------------------------------------------

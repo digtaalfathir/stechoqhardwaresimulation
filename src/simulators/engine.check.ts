@@ -939,7 +939,8 @@ async function main() {
   assert(spinner.transmission.sent === parked, 'clearTimers stops every device timer');
 
   // --- plc: one session per browser, and it survives the session expiring ---
-  assert(parseRegister(' d 11 ') === 'D11' && parseRegister('w1a') === 'W1A' && parseRegister('M5') === null, 'register addresses parse');
+  assert(parseRegister(' d 11 ') === 'D11' && parseRegister('w1a') === 'W1A' && parseRegister('m16000') === 'M16000', 'register addresses parse');
+  assert(parseRegister('x1f') === 'X1F' && parseRegister('D1A') === null && parseRegister('Q5') === null, 'hex devices count in hex, decimal ones refuse hex digits');
   let bridge = { session: 'B', mode: 'online', mcPort: 8213, mcHost: 'plc.example.test', clients: ['10.0.0.9:5000'],
     registers: <Record<string, unknown>>{ D11: { value: 3, reads: 1, writes: 0, lastRead: null, lastWrite: null } },
     seq: 1, log: [] as unknown[] };

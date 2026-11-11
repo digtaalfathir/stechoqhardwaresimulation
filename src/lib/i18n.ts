@@ -279,9 +279,9 @@ const ID: Record<string, string> = {
   'sim.digital-io.tagline': 'Box I/O ESP32 + W5500 dengan sensor dan aktuator lapangan, peta Modbus, dan setiap frame-nya.',
   'sim.digital-io.description':
     'Mensimulasikan modul I/O diskret: ubah input atau output mana pun dan amati notifikasi perubahan yang diterima backend Anda. Model yang sama mencakup board ESP32, modul W5500, atau coupler Modbus TCP — yang berbeda hanya transport-nya. Pada REST perubahan benar-benar dikirim ke endpoint Anda dan responsnya ditampilkan; frame Modbus dan MQTT hanya dibuat, karena browser tidak bisa membuka socket tersebut.',
-  'sim.plc.tagline': 'Memori register PLC Mitsubishi yang dilayani lewat MC Protocol 3E — ubah register D secara langsung.',
+  'sim.plc.tagline': 'Memori device PLC Mitsubishi yang dilayani lewat MC Protocol 3E — ubah register D dan bit M secara langsung.',
   'sim.plc.description':
-    'Mensimulasikan PLC Mitsubishi Q / iQ-R untuk program akuisisi data. Jalankan perintah satu baris yang ditampilkan workspace (hanya butuh Node) dan Anda mendapat PLC di localhost: arahkan program Anda ke alamat yang ditampilkan dan PLC menjawab batch read dan write MC Protocol 3E binary persis seperti CPU aslinya. Workspace ini mengubah memori register tersebut secara langsung dan menampilkan setiap request program Anda, byte demi byte. Register muncul sendiri begitu ada client yang membacanya. PLC juga bisa dibuat offline (koneksi ditolak) atau diam (tersambung tapi tidak pernah menjawab) untuk menguji penanganan reconnect dan timeout.',
+    'Mensimulasikan PLC Mitsubishi Q / iQ-R untuk program akuisisi data. Jalankan perintah satu baris yang ditampilkan workspace (hanya butuh Node) dan Anda mendapat PLC di localhost: arahkan program Anda ke alamat yang ditampilkan dan PLC menjawab batch read dan write MC Protocol 3E binary — word device (D, R, W, SD, ZR) dan bit device (M, L, B, X, Y, SM), dalam satuan word maupun bit — persis seperti CPU aslinya. Workspace ini mengubah memori register tersebut secara langsung dan menampilkan setiap request program Anda, byte demi byte. Register muncul sendiri begitu ada client yang membacanya. PLC juga bisa dibuat offline (koneksi ditolak) atau diam (tersambung tapi tidak pernah menjawab) untuk menguji penanganan reconnect dan timeout.',
   'plc.live': 'dilayani pada pembacaan berikutnya',
   'plc.down': 'PLC belum berjalan di komputer ini.',
   'plc.start.button': 'Start PLC',
@@ -301,8 +301,6 @@ const ID: Record<string, string> = {
   'plc.empty': 'Belum ada register. Tambahkan di atas, atau langsung jalankan program Anda — setiap register yang dibacanya muncul di sini.',
   'plc.reads': 'Dibaca client',
   'plc.writes': 'Ditulis client',
-  'plc.note':
-    'Word 16-bit bertanda, sama seperti yang dibaca node-mc_protocol. D dan R bernomor desimal, W heksadesimal. Nilai disimpan saat Enter atau saat kolom kehilangan fokus, jadi client yang sedang polling tidak pernah membaca nilai setengah diketik. Comment hanya tersimpan di browser ini — program Anda tetap membaca D11.',
   'plc.t.read': 'Baca',
   'plc.t.write': 'Tulis',
   'sim.rfid-reader.tagline': 'Gerbang gudang dengan 8 antena — forklift membawa tumpukan RR lewat, gerbang melaporkan yang terbaca.',
@@ -551,6 +549,9 @@ const ID: Record<string, string> = {
   'tour.gen.config.b': 'Atur perangkat lalu terapkan; perangkat menjadi online.',
   'tour.gen.controls.t': 'Kendali',
   'tour.gen.controls.b': 'Picu aksi yang dilakukan perangkat sungguhan.',
+  'plc.bits': 'Bit device',
+  'plc.bits.hint': 'klik bit untuk membaliknya · word = cara getWords membaca baris ini',
+  'plc.note2': 'Word bertipe signed 16-bit, seperti yang dibaca node-mc_protocol; bit (M, L, B, X, Y, SM) satu per alamat dan dibaca sebagai word 16 sekaligus, alamat terendah di bit 0. D, R, M, dan L dihitung desimal; W, B, X, dan Y heksadesimal. Nilai disimpan saat Enter atau saat kolom kehilangan fokus, jadi client yang membaca di tengah ketikan tidak pernah mendapat nilai setengah jadi. Komentar tersimpan di browser ini.',
 };
 
 const DICTS: Record<Lang, Record<string, string>> = { en: {}, id: ID };

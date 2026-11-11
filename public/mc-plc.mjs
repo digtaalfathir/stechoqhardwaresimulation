@@ -50,14 +50,20 @@ const SCHEME = 'stechoq-plc';
 const AUTO_EXIT_MS = 10 * 60_000;
 let lastHttp = Date.now();
 
-// Word devices only. W is numbered in hex on a real PLC, D and R in decimal.
-// ponytail: bit devices (M, X, Y) and ZR are not served; add a row here and a
-// bit-packing branch in handle() when a client actually reads them.
-const DEVICES = { 0xa8: 'D', 0xaf: 'R', 0xb4: 'W' };
-const HEX_DEVICES = new Set(['W']);
+// Device code -> name, as a Q / iQ-R CPU numbers them. Bit devices hold one
+// bit per address and can be read in word units (16 bits, lowest address in
+// bit 0) or in bit units. X, Y, B and W are numbered in hex, the rest decimal.
+const DEVICES = {
+  0xa8: 'D', 0xaf: 'R', 0xb4: 'W', 0xa9: 'SD', 0xb0: 'ZR',
+  0x90: 'M', 0x92: 'L', 0xa0: 'B', 0x9c: 'X', 0x9d: 'Y', 0x91: 'SM',
+};
+const HEX_DEVICES = new Set(['W', 'B', 'X', 'Y']);
+const BIT_DEVICES = new Set(['M', 'L', 'B', 'X', 'Y', 'SM']);
 
 // End codes a real CPU answers with.
 const END = { OK: 0x0000, BAD_COUNT: 0xc051, BAD_DEVICE: 0xc056, BAD_COMMAND: 0xc059 };
+const MAX_WORDS = 960;
+const MAX_BITS = 7168;
 
 // --- memory ------------------------------------------------------------------
 
@@ -73,14 +79,17 @@ function cell(memory, key, create = true) {
   return c;
 }
 
-/** Parses "D11", "w1a", "R 5" into a canonical key, or null. */
+/** Parses "D11", "w1a", "M16000", "x1f" into a canonical key, or null. */
 export function parseKey(text) {
-  const m = /^\s*([DRW])\s*([0-9A-F]+)\s*$/i.exec(String(text));
+  const m = /^\s*(SM|SD|ZR|[DRWMLBXY])\s*([0-9A-F]+)\s*$/i.exec(String(text));
   if (!m) return null;
   const dev = m[1].toUpperCase();
-  const no = parseInt(m[2], HEX_DEVICES.has(dev) ? 16 : 10);
-  return Number.isFinite(no) ? deviceKey(dev, no) : null;
+  const hexNo = HEX_DEVICES.has(dev);
+  if (!hexNo && !/^[0-9]+$/.test(m[2])) return null;
+  return deviceKey(dev, parseInt(m[2], hexNo ? 16 : 10));
 }
+
+const isBitKey = (key) => BIT_DEVICES.has(/^[A-Z]+/.exec(key)[0]);
 
 // --- frame codec -------------------------------------------------------------
 
@@ -90,7 +99,7 @@ const hex = (buf) => buf.toString('hex').toUpperCase().replace(/(..)(?!$)/g, '$1
 export function handle(memory, req, now = new Date().toISOString()) {
   const command = req.readUInt16LE(11);
   const sub = req.readUInt16LE(13);
-  const iqr = sub === 0x0002;
+  const iqr = (sub & 2) === 2;
   const info = { op: 'error', device: null, count: 0, values: [], end: END.OK };
 
   const fail = (end) => {
@@ -100,9 +109,9 @@ export function handle(memory, req, now = new Date().toISOString()) {
     return { res: frame(req, end, body), info };
   };
 
-  if ((command !== 0x0401 && command !== 0x1401) || (sub !== 0x0000 && sub !== 0x0002)) {
-    return fail(END.BAD_COMMAND);
-  }
+  // Sub-command: bit 1 = iQ-R device layout, bit 0 = bit units instead of words.
+  if ((command !== 0x0401 && command !== 0x1401) || sub > 0x0003) return fail(END.BAD_COMMAND);
+  const bitUnits = (sub & 1) === 1;
   const countAt = iqr ? 21 : 19;
   if (req.length < countAt + 2) return fail(END.BAD_COMMAND);
 
@@ -112,8 +121,14 @@ export function handle(memory, req, now = new Date().toISOString()) {
   const dev = DEVICES[code];
   info.count = count;
   if (!dev) return fail(END.BAD_DEVICE);
+  const bitDevice = BIT_DEVICES.has(dev);
+  if (bitUnits && !bitDevice) return fail(END.BAD_DEVICE);
   info.device = deviceKey(dev, no);
-  if (count < 1 || count > 960) return fail(END.BAD_COUNT);
+  info.unit = bitUnits ? 'bit' : 'word';
+  if (count < 1 || count > (bitUnits ? MAX_BITS : MAX_WORDS)) return fail(END.BAD_COUNT);
+  const dataAt = countAt + 2;
+
+  if (bitDevice) return bits({ memory, req, command, dev, no, count, bitUnits, dataAt, now, info, fail });
 
   const keys = Array.from({ length: count }, (_, i) => deviceKey(dev, no + i));
 
@@ -134,7 +149,6 @@ export function handle(memory, req, now = new Date().toISOString()) {
   }
 
   info.op = 'write';
-  const dataAt = countAt + 2;
   if (req.length < dataAt + count * 2) return fail(END.BAD_COUNT);
   keys.forEach((k, i) => {
     const v = req.readInt16LE(dataAt + i * 2);
@@ -146,6 +160,57 @@ export function handle(memory, req, now = new Date().toISOString()) {
     }
     info.values.push(v);
   });
+  return { res: frame(req, END.OK, Buffer.alloc(0)), info };
+}
+
+/**
+ * A bit device: one cell per bit. In word units each word carries 16 bits,
+ * the lowest address in bit 0; in bit units each byte carries two points,
+ * the first in the high nibble.
+ */
+function bits({ memory, req, command, dev, no, count, bitUnits, dataAt, now, info, fail }) {
+  const points = bitUnits ? count : count * 16;
+  const keys = Array.from({ length: points }, (_, i) => deviceKey(dev, no + i));
+  const bytes = bitUnits ? Math.ceil(count / 2) : count * 2;
+
+  if (command === 0x0401) {
+    info.op = 'read';
+    const on = keys.map((k) => {
+      const c = cell(memory, k);
+      if (c) {
+        c.reads++;
+        c.lastRead = now;
+      }
+      return c ? c.value & 1 : 0;
+    });
+    const data = Buffer.alloc(bytes);
+    if (bitUnits) {
+      on.forEach((v, i) => v && (data[i >> 1] |= i % 2 ? 0x01 : 0x10));
+      info.values = on;
+    } else {
+      for (let w = 0; w < count; w++) {
+        let v = 0;
+        for (let j = 0; j < 16; j++) v |= on[w * 16 + j] << j;
+        data.writeUInt16LE(v, w * 2);
+        info.values.push(toInt16(v));
+      }
+    }
+    return { res: frame(req, END.OK, data), info };
+  }
+
+  info.op = 'write';
+  if (req.length < dataAt + bytes) return fail(END.BAD_COUNT);
+  const bit = (i) =>
+    bitUnits ? (req[dataAt + (i >> 1)] >> (i % 2 ? 0 : 4)) & 1 : (req.readUInt16LE(dataAt + (i >> 4) * 2) >> (i & 15)) & 1;
+  keys.forEach((k, i) => {
+    const c = cell(memory, k);
+    if (c) {
+      c.value = bit(i);
+      c.writes++;
+      c.lastWrite = now;
+    }
+  });
+  info.values = bitUnits ? keys.map((_, i) => bit(i)) : Array.from({ length: count }, (_, w) => req.readInt16LE(dataAt + w * 2));
   return { res: frame(req, END.OK, Buffer.alloc(0)), info };
 }
 
@@ -283,7 +348,7 @@ function setRegisters(s, patch) {
     const n = Number(v);
     const c = Number.isFinite(n) && cell(s.memory, key);
     if (!c) continue;
-    c.value = toInt16(n);
+    c.value = isBitKey(key) ? (n ? 1 : 0) : toInt16(n);
     changed.push(`${key}=${c.value}`);
   }
   if (changed.length) record(s, { op: 'set', note: changed.join(' ') });
@@ -372,21 +437,21 @@ const httpServer = http.createServer((req, res) => {
 // --- self-check --------------------------------------------------------------
 
 /** Builds a request the way node-mc_protocol's MessageBuilder does. */
-function request(command, model, no, count, values = []) {
+function request(command, model, no, count, values = [], { code = 0xa8, bitUnits = false, raw = null } = {}) {
   const iqr = model === 'iQ-R';
   const dev = Buffer.alloc(iqr ? 6 : 4);
   if (iqr) {
     dev.writeUInt32LE(no, 0);
-    dev.writeUInt16LE(0xa8, 4);
+    dev.writeUInt16LE(code, 4);
   } else {
     dev.writeUIntLE(no, 0, 3);
-    dev.writeUInt8(0xa8, 3);
+    dev.writeUInt8(code, 3);
   }
   const body = Buffer.concat([
-    Buffer.from([0x10, 0x00, command & 0xff, command >> 8, iqr ? 0x02 : 0x00, 0x00]),
+    Buffer.from([0x10, 0x00, command & 0xff, command >> 8, (iqr ? 2 : 0) | (bitUnits ? 1 : 0), 0x00]),
     dev,
     Buffer.from([count & 0xff, count >> 8]),
-    Buffer.from(values.flatMap((v) => [v & 0xff, (v >> 8) & 0xff])),
+    raw ?? Buffer.from(values.flatMap((v) => [v & 0xff, (v >> 8) & 0xff])),
   ]);
   const len = Buffer.alloc(2);
   len.writeUInt16LE(body.length);
@@ -416,10 +481,23 @@ function check() {
   const w = handle(m, request(0x1401, 'iQ-R', 100, 2, [7, 9]));
   ok(w.res.readUInt16LE(9) === 0 && m.get('D101').value === 9, 'batch write lands in memory');
 
-  const bad = request(0x0401, 'Q', 0, 1);
-  bad.writeUInt8(0x90, 18); // M, a bit device
-  const err = handle(m, bad).res;
+  const err = handle(m, request(0x0401, 'Q', 0, 1, [], { code: 0xc2 })).res; // TN, not served
   ok(err.readUInt16LE(9) === END.BAD_DEVICE && err.readUInt16LE(7) === 11, 'unsupported device is refused');
+
+  // Bit devices: M16000.. read as words, the way an HMI block is usually read.
+  setRegisters(s, { M16000: 1, M16002: 5, M16017: 1, M16033: 1 });
+  ok(m.get('M16002').value === 1, 'a bit stores 0 or 1');
+  const mw = handle(m, request(0x0401, 'Q', 16000, 3, [], { code: 0x90 }));
+  ok(mw.res.readUInt16LE(7) === 8 && mw.info.device === 'M16000', `M as 3 words: ${hex(mw.res)}`);
+  ok(mw.res.readUInt16LE(11) === 0b101 && mw.res.readUInt16LE(13) === 0b10 && mw.res.readUInt16LE(15) === 0b10, 'lowest address in bit 0');
+  ok(m.get('M16047').reads === 1, 'every bit of the words is counted as read');
+  handle(m, request(0x1401, 'iQ-R', 16000, 1, [0x8001], { code: 0x90 }));
+  ok(m.get('M16000').value === 1 && m.get('M16002').value === 0 && m.get('M16015').value === 1, 'word write sets 16 bits');
+  const xb = handle(m, request(0x0401, 'Q', 0x1f, 3, [], { code: 0x9c, bitUnits: true }));
+  ok(xb.info.device === 'X1F' && xb.res.readUInt16LE(7) === 4, 'X in bit units, numbered in hex');
+  handle(m, request(0x1401, 'Q', 0x20, 3, [], { code: 0x9d, bitUnits: true, raw: Buffer.from([0x01, 0x10]) }));
+  ok(m.get('Y20').value === 0 && m.get('Y21').value === 1 && m.get('Y22').value === 1, 'bit-unit write: first point in the high nibble');
+  ok(handle(m, request(0x0401, 'Q', 0, 1, [], { bitUnits: true })).res.readUInt16LE(9) === END.BAD_DEVICE, 'D in bit units is refused');
   ok(handle(m, request(0x0401, 'Q', 0, 961)).res.readUInt16LE(9) === END.BAD_COUNT, 'count over 960 refused');
 
   // A sweep past the cap still answers, it just stops remembering new cells.
@@ -430,7 +508,8 @@ function check() {
   handle(other, request(0x1401, 'Q', 11, 1, [99]));
   ok(m.get('D11').value === 3, 'sessions do not share memory');
 
-  ok(parseKey('w1a') === 'W1A' && parseKey(' d 11 ') === 'D11' && parseKey('M5') === null, 'parseKey');
+  ok(parseKey('w1a') === 'W1A' && parseKey(' d 11 ') === 'D11' && parseKey('m16000') === 'M16000', 'parseKey');
+  ok(parseKey('x1f') === 'X1F' && parseKey('D1A') === null && parseKey('Q5') === null && parseKey('sm400') === 'SM400', 'parseKey numbering');
   console.log('mc-plc check passed');
 }
 
