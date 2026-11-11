@@ -62,16 +62,19 @@ asserts the declared length, every field offset and the torque x100 encoding.
 The PLC is the one device a browser cannot be on its own: an acquisition program *connects to* a
 PLC, and a page can neither accept a TCP connection nor start a program on the visitor's machine. So
 the socket half is [public/mc-plc.mjs](public/mc-plc.mjs) — one file, no dependencies, **served by
-the site itself** at `/mc-plc.mjs` — and the workspace shows the one command that fetches and runs it:
+the site itself** at `/mc-plc.mjs` — and the workspace shows the command that downloads and runs it,
+with a tab per terminal (picked from the visitor's OS):
 
-```
-node -e "fetch('https://<site>/mc-plc.mjs').then(r=>r.text()).then(t=>import('data:text/javascript,'+encodeURIComponent(t)))"
-```
+| Terminal                  | Command                                                    |
+| ------------------------- | ---------------------------------------------------------- |
+| Linux / macOS, Windows CMD | `curl -fsSL https://<site>/mc-plc.mjs -o mc-plc.mjs && node mc-plc.mjs` |
+| Windows PowerShell        | `irm https://<site>/mc-plc.mjs -OutFile mc-plc.mjs; node mc-plc.mjs`    |
 
-It works the same in bash, cmd and PowerShell and needs only Node 18+ (anyone testing a Node
-acquisition program has it); a download button covers older Node. No server, no repo, no install.
-The workspace polls `http://localhost:8201` and connects by itself the moment the bridge is up.
-Chrome may ask once to allow the site to reach the local network.
+The download is the shell's job, not Node's — `fetch` only exists from Node 18, while the bridge runs
+on Node 14+. CMD can share the Linux line because `curl` ships with Windows 10+; PowerShell aliases
+`curl` to `Invoke-WebRequest`, hence `irm`. A download button covers everything else. No server, no
+repo, no install. The workspace polls `http://localhost:8201` and connects by itself the moment the
+bridge is up. Chrome may ask once to allow the site to reach the local network.
 
 The bridge answers **MC Protocol 3E binary** batch word reads (`0401`) and writes (`1401`) for D, R
 and W, with Q and iQ-R sub-commands, exactly as the CPU would. Each browser tab gets its own PLC on

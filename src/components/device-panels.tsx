@@ -823,13 +823,30 @@ function PlcRegisterPanel({ sim }: { sim: McPlcSimulator }) {
 
 /**
  * A page cannot start a program on the visitor's machine, so this is the one
- * step left to them: a command that fetches the bridge from this very site and
- * runs it. One string that works unchanged in bash, cmd and PowerShell.
+ * step left to them: download the bridge from this very site and run it.
+ *
+ * The download is done by the shell's own tool, not by Node: `fetch` only
+ * exists from Node 18, and the bridge itself runs on Node 14+. CMD shares the
+ * Linux line (curl ships with Windows 10+); PowerShell aliases `curl` to
+ * something else, so it gets `irm`.
  */
+const SHELLS = ['Linux / macOS', 'Windows CMD', 'Windows PowerShell'] as const;
+type Shell = (typeof SHELLS)[number];
+
+function startCommand(shell: Shell, file: string): string {
+  return shell === 'Windows PowerShell'
+    ? `irm ${file} -OutFile mc-plc.mjs; node mc-plc.mjs`
+    : `curl -fsSL ${file} -o mc-plc.mjs && node mc-plc.mjs`;
+}
+
 function PlcStart({ sim }: { sim: McPlcSimulator }) {
   const t = useT();
   const file = new URL('mc-plc.mjs', location.href.split('#')[0]).href;
-  const command = `node -e "fetch('${file}').then(r=>r.text()).then(t=>import('data:text/javascript,'+encodeURIComponent(t)))"`;
+  // Windows 11 opens PowerShell by default, so that is the likelier guess there.
+  const [shell, setShell] = useState<Shell>(() =>
+    /Windows/i.test(navigator.userAgent) ? 'Windows PowerShell' : 'Linux / macOS',
+  );
+  const command = startCommand(shell, file);
   return (
     <div className="panel-body">
       <p style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, marginBottom: 6 }}>
@@ -840,9 +857,16 @@ function PlcStart({ sim }: { sim: McPlcSimulator }) {
       <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
         {t(
           'plc.start',
-          'Run this in a terminal (needs Node 18+). This page connects by itself as soon as the PLC is up — leave that terminal window open.',
+          'Run this in a terminal (needs Node 14+). This page connects by itself as soon as the PLC is up — leave that terminal window open.',
         )}
       </p>
+      <div className="segmented" role="group" aria-label={t('plc.shell', 'Terminal')} style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', marginBottom: 8 }}>
+        {SHELLS.map((s) => (
+          <button key={s} type="button" aria-pressed={shell === s} onClick={() => setShell(s)}>
+            {s}
+          </button>
+        ))}
+      </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
         <code className="mono" style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', fontSize: 12.5, padding: '6px 8px', border: '1px solid var(--line-strong)', borderRadius: 'var(--radius)' }}>
           {command}
@@ -850,8 +874,8 @@ function PlcStart({ sim }: { sim: McPlcSimulator }) {
         <CopyButton text={command} />
       </div>
       <p className="muted" style={{ fontSize: 12.5 }}>
-        {t('plc.start.alt', 'Older Node, or a shell that will not take the line above? Download the file and run')}{' '}
-        <code>node mc-plc.mjs</code>{' '}
+        {t('plc.start.alt', 'Prefer the browser? Download the file, then run')} <code>node mc-plc.mjs</code>{' '}
+        {t('plc.start.alt.b', 'in the folder you saved it to.')}{' '}
         <a className="btn btn-sm" href={file} download="mc-plc.mjs">
           {t('plc.download', 'Download mc-plc.mjs')}
         </a>
