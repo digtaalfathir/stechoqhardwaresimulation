@@ -9,7 +9,7 @@ import { ANTENNA, BENCH, RfidHandheldSimulator, quality } from './rfid/rfid-hand
 import type { MasterFetch } from './rfid/master-data';
 import { LOAD_SIZE, RfidReaderSimulator } from './rfid/rfid-reader';
 import { NutrunnerSimulator } from './nutrunner/nutrunner';
-import { DigitalIoSimulator } from './digital-io/digital-io';
+import { DigitalIoSimulator, packBits } from './digital-io/digital-io';
 import { McPlcSimulator, parseRegister } from './plc/mc-plc';
 import { httpPost, randomEpc, withResponse } from './core/wire';
 import { MID_0061_FIELDS, NUL, describe, telegram, numField } from './nutrunner/open-protocol';
@@ -827,16 +827,31 @@ async function main() {
   assert(change.transport?.summary.includes('10002'), 'inputs map to the discrete-input table');
   assert(change.transport!.live !== true, 'a Modbus frame is generated, never claimed as sent');
   assert(dio.transmission.sent === 0, 'Modbus puts nothing on the network');
+  const fc02 = dio.state.adu!;
+  assert(fc02.fc === 2 && fc02.bytes.slice(-2).join() === '1,2', 'an input change frames the FC02 response with the packed inputs');
+  assert(fc02.bytes[5] === fc02.bytes.length - 6, 'the MBAP length counts the unit id and the PDU');
+  assert(dio.state.hits.DI[1] === 1 && dio.state.at.DI[1] !== null && dio.state.hits.DI[0] === 0, 'only the moved channel is counted');
   dio.toggle('DO', 2);
   assert(dio.events[0].transport?.summary.includes('FC05'), 'outputs map to a coil write');
+  assert(
+    dio.state.adu!.bytes.join() === [0, 2, 0, 0, 0, 6, 1, 5, 0, 2, 0xff, 0].join(),
+    `a coil write is a byte-exact FC05 ADU (got ${dio.state.adu!.bytes})`,
+  );
+  assert(packBits([true, false, false, false, false, false, false, false, true]).join() === '1,1', 'bits pack LSB first, eight to a byte');
   assert(dio.stateRows().some((r) => r.label === 'Output Word' && r.value === '0x0004'), 'the output register word packs bit 2');
   dio.toggle('DI', 99);
   assert(dio.events[0].name === 'DO_CHANGED', 'an out-of-range channel is ignored');
+  dio.set('DI', 3, true);
+  dio.set('DI', 3, true);
+  assert(dio.state.hits.DI[3] === 1, 'driving a channel to the level it already has changes nothing');
+  dio.set('DI', 3, false);
 
   dio.applyConfig({ channels: '8' });
   assert(dio.state.inputs.length === 8 && dio.state.inputs[1] === true, 'growing the block keeps existing channel states');
   dio.run('all-outputs-off');
   assert(!dio.state.outputs.some(Boolean), 'all outputs drop to OFF');
+  assert(dio.state.adu!.fc === 0x0f && dio.state.adu!.bytes.slice(8, 13).join() === '0,0,0,8,1', 'dropping every output is one FC15 for the whole block');
+  assert(dio.state.hits.DO.length === 8, 'the per-channel counters follow the channel count');
   dio.run('pulse-output');
   assert(dio.state.outputs[0] === true, 'a pulse raises DO01');
   await sleep(900);

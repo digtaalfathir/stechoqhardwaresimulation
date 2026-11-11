@@ -3,6 +3,7 @@ import type { McPlcSimulator, PlcMode } from '../../simulators/plc/mc-plc';
 import type { SimEvent } from '../../simulators/core/types';
 import { useSimulator } from '../../lib/use-simulator';
 import { useT } from '../../lib/i18n';
+import { useComments } from '../../lib/use-comments';
 import { CopyButton } from '../copy-button';
 import { EventStream } from '../event-stream';
 import { CommunicationLog, ConfigPanel } from '../workspace';
@@ -125,38 +126,13 @@ function StatusBar({ sim }: { sim: McPlcSimulator }) {
 
 // --- device monitor ------------------------------------------------------------
 
-const COMMENTS_KEY = 'shs.plc.comments';
-
-/** Device comments are a label for people, kept in this browser only. */
-function useComments(): [Record<string, string>, (key: string, text: string) => void] {
-  const [comments, setComments] = useState<Record<string, string>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(COMMENTS_KEY) ?? '{}') as Record<string, string>;
-    } catch {
-      return {};
-    }
-  });
-  const set = (key: string, text: string) =>
-    setComments((c) => {
-      const next = { ...c, [key]: text };
-      if (!text) delete next[key];
-      try {
-        localStorage.setItem(COMMENTS_KEY, JSON.stringify(next));
-      } catch {
-        /* not persisted — still works for this visit */
-      }
-      return next;
-    });
-  return [comments, set];
-}
-
 const hex = (v: number) => (v & 0xffff).toString(16).toUpperCase().padStart(4, '0');
 
 function DeviceMonitor({ sim }: { sim: McPlcSimulator }) {
   const t = useT();
   const st = sim.state;
   const keys = sim.registerKeys();
-  const [comments, setComment] = useComments();
+  const [comments, setComment] = useComments('shs.plc.comments');
   const [addr, setAddr] = useState('');
   const [val, setVal] = useState('0');
   const [error, setError] = useState<string | null>(null);

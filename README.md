@@ -90,6 +90,17 @@ does. Beside it the torque × angle curve is drawn live inside its acceptance wi
 curve faint behind it; under it, the last results and the latest MID 0061 split field by field. The
 station is in [src/components/nutrunner/](src/components/nutrunner/).
 
+The digital I/O is an **ESP32 + W5500 box on a DIN rail**, the boards visible behind its window,
+with the field wired to it: start and stop buttons, a proximity sensor, a photo-eye, a limit switch,
+a door switch, a selector and an E-stop on the inputs; a stack light, a solenoid valve, a buzzer, a
+pilot lamp, a motor and a relay on the outputs. Clicking a device switches its channel (push
+buttons only while held); 4, 8 or 16 channels redraw the box and the field. Beside it the **process
+image** shows both Modbus bit tables with their words, and the last frame byte for byte — the FC02
+reply, the FC05 write or the FC15 write — split into MBAP header and PDU. Under it, one table per
+direction with addresses, a comment per channel (kept in this browser), change counts and times.
+REST is really sent; Modbus and MQTT frames are generated. The box is in
+[src/components/dio/](src/components/dio/).
+
 The PLC is the one device a browser cannot be on its own: an acquisition program *connects to* a
 PLC, and a page can neither accept a TCP connection nor start a program on the visitor's machine. So
 the socket half is [public/mc-plc.mjs](public/mc-plc.mjs) — one file, no dependencies, **served by
@@ -151,14 +162,15 @@ src/
 │   ├── core/            Simulator base class, shared types, wire builders
 │   ├── rfid/            RFID handheld + gate reader, master data
 │   ├── nutrunner/       Tightening tool
-│   ├── digital-io/      Discrete I/O controller
+│   ├── digital-io/      Digital I/O box (ESP32 + W5500)
 │   ├── plc/             MC Protocol PLC (socket side: public/mc-plc.mjs)
 │   ├── registry.ts      The one place devices are registered
 │   └── engine.check.ts  npm run check
-├── components/          Workspace, event stream, inspector, device panels, settings menu
+├── components/          Workspace, event stream, inspector, send result, settings menu
 │   ├── handheld/        The MC33 device, its tag bench and the WMS RFID Suite app
 │   ├── gate/            The isometric 8-antenna gate and the forklift going through
 │   ├── nutrunner/       The tightening station, the torque curve and the MID 0061 decoder
+│   ├── dio/             The ESP32 + W5500 box, its field devices and the Modbus process image
 │   └── plc/             The Q-series rack, the device monitor and the frame decoder
 ├── pages/               Home, explorer, workspace, docs, about
 ├── lib/                 Hash router, React binding, settings store, i18n
@@ -201,9 +213,9 @@ export class ConveyorSimulator extends Simulator<ConveyorState> {
 }
 ```
 
-A device that needs a purpose-built view (a channel grid) adds a case to
-`src/components/device-panels.tsx`; one that needs a whole workspace of its own (handheld, gate,
-nutrunner, PLC) gets a folder under `src/components/` and a branch in `workspace.tsx`. Everything else stays generic.
+A device that needs a purpose-built view (as the handheld, gate, nutrunner, digital I/O and PLC
+do) gets a folder under `src/components/` and a branch in `workspace.tsx`. Everything else stays
+generic.
 
 Devices that need a new protocol view add a builder returning a `TransportFrame` in
 `src/simulators/core/wire.ts`; the inspector prints whatever it is handed.

@@ -4,7 +4,7 @@ import type { SimEvent } from '../../simulators/core/types';
 import { useSimulator } from '../../lib/use-simulator';
 import { useT } from '../../lib/i18n';
 import { EventStream, PayloadInspector } from '../event-stream';
-import { SendResult } from '../device-panels';
+import { SendResult } from '../send-result';
 import { CommunicationLog, ConfigPanel } from '../workspace';
 import { GateScene } from './gate-scene';
 import './gate.css';

@@ -8,7 +8,6 @@ import { href } from '../lib/router';
 import { useT } from '../lib/i18n';
 import { Icon } from './icon';
 import { EventStream, PayloadInspector } from './event-stream';
-import { DevicePanel } from './device-panels';
 import { HandheldWorkspace } from './handheld/handheld-device';
 import { RfidHandheldSimulator } from '../simulators/rfid/rfid-handheld';
 import { RfidReaderSimulator } from '../simulators/rfid/rfid-reader';
@@ -17,6 +16,8 @@ import { McPlcSimulator } from '../simulators/plc/mc-plc';
 import { PlcWorkspace } from './plc/plc-workspace';
 import { NutrunnerSimulator } from '../simulators/nutrunner/nutrunner';
 import { NutrunnerWorkspace } from './nutrunner/nr-workspace';
+import { DigitalIoSimulator } from '../simulators/digital-io/digital-io';
+import { DigitalIoWorkspace } from './dio/dio-workspace';
 
 const STATUS_TONE: Record<DeviceStatus, Tone> = {
   OFFLINE: 'neutral',
@@ -101,6 +102,9 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
       ) : sim instanceof NutrunnerSimulator ? (
         // The nutrunner is a tightening station with its live curve.
         <NutrunnerWorkspace sim={sim} />
+      ) : sim instanceof DigitalIoSimulator ? (
+        // The I/O box with its sensors and loads wired to it.
+        <DigitalIoWorkspace sim={sim} />
       ) : (
       <>
       <ConfigPanel key={sim.meta.id} sim={sim} />
@@ -183,10 +187,6 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
             </table>
           </section>
         )}
-      </div>
-
-      <div className="ws-row">
-        <DevicePanel sim={sim} />
       </div>
 
       <div className="ws-row stream-inspect">

@@ -1,19 +1,6 @@
 import type { AnySimulator } from '../simulators/registry';
 import { useT, type Translate } from '../lib/i18n';
 import type { TransportResponse } from '../simulators/core/types';
-import { DigitalIoSimulator, type ChannelKind } from '../simulators/digital-io/digital-io';
-
-/**
- * Device-specific panels.
- *
- * The generic workspace covers config / controls / state / events / payloads for
- * every device. This is the one escape hatch for devices that need a purpose-built
- * view — a tightening curve, a channel grid. Devices without one render nothing.
- */
-export function DevicePanel({ sim }: { sim: AnySimulator }) {
-  if (sim instanceof DigitalIoSimulator) return <DigitalIoPanel sim={sim} />;
-  return null;
-}
 
 /** Localised version of the transport's own explanation, with English fallback. */
 function explainError(res: TransportResponse, t: Translate): string {
@@ -109,90 +96,5 @@ export function SendResult({ sim }: { sim: AnySimulator }) {
         )}
       </p>
     </section>
-  );
-}
-
-// --- digital i/o -----------------------------------------------------------
-
-function DigitalIoPanel({ sim }: { sim: DigitalIoSimulator }) {
-  const t = useT();
-  return (
-    <>
-      {sim.restMode() && <SendResult sim={sim} />}
-      <IoChannels sim={sim} t={t} />
-    </>
-  );
-}
-
-function IoChannels({ sim, t }: { sim: DigitalIoSimulator; t: Translate }) {
-  return (
-    <section className="panel span-2">
-      <div className="panel-head">
-        <span className="panel-title">{t('io.title', 'I/O Channels')}</span>
-        <div className="spacer" />
-        <span className="chip">{t('io.hint', 'click a channel to toggle it')}</span>
-      </div>
-      <div className="panel-body">
-        <div className="io-columns">
-          <ChannelBlock sim={sim} kind="DI" title={t('io.inputs', 'Inputs')} channels={sim.state.inputs} />
-          <ChannelBlock sim={sim} kind="DO" title={t('io.outputs', 'Outputs')} channels={sim.state.outputs} />
-        </div>
-      </div>
-      <p className="panel-note">
-        {sim.restMode()
-          ? t(
-              'io.note.rest',
-              'Inputs model field signals (sensors, buttons); outputs model driven loads (valves, lamps). Every transition is really posted to the REST endpoint, and the response is shown above.',
-            )
-          : t(
-              'io.note',
-              'Inputs model field signals (sensors, buttons); outputs model driven loads (valves, lamps). Every transition is logged and framed for the configured transport.',
-            )}
-      </p>
-    </section>
-  );
-}
-
-function ChannelBlock({
-  sim,
-  kind,
-  title,
-  channels,
-}: {
-  sim: DigitalIoSimulator;
-  kind: ChannelKind;
-  title: string;
-  channels: boolean[];
-}) {
-  const t = useT();
-  const on = channels.filter(Boolean).length;
-  return (
-    <div>
-      <div className="io-legend">
-        <h4>{title}</h4>
-        <span className="muted" style={{ fontSize: 12 }}>
-          {on} {t('io.of', 'of')} {channels.length} ON
-        </span>
-      </div>
-      <div className="io-channels">
-        {channels.map((value, i) => {
-          const name = sim.channelName(kind, i);
-          return (
-            <button
-              key={name}
-              type="button"
-              className={`io-channel${value ? ' on' : ''}`}
-              onClick={() => sim.toggle(kind, i)}
-              aria-pressed={value}
-              title={`${t('io.toggle', 'Toggle')} ${name}`}
-            >
-              <span className="led" />
-              {name}
-              <span className="io-value">{value ? 'ON' : 'OFF'}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }

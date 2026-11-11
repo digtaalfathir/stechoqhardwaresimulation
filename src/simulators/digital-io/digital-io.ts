@@ -4,10 +4,42 @@ import { modbusWrite, mqttPublish } from '../core/wire';
 
 export type ChannelKind = 'DI' | 'DO';
 
+/** A Modbus TCP ADU as it would sit on the wire, MBAP header first. */
+export interface ModbusAdu {
+  fc: number;
+  /** What this frame is, for people: "FC05 write DO03 ON". */
+  note: string;
+  bytes: number[];
+}
+
 interface DioState {
   inputs: boolean[];
   outputs: boolean[];
   changes: number;
+  /** Per channel: how many times it changed, and when it last did. */
+  hits: Record<ChannelKind, number[]>;
+  at: Record<ChannelKind, (string | null)[]>;
+  /** The last Modbus frame and the transaction id it used. */
+  adu: ModbusAdu | null;
+  tid: number;
+}
+
+/** The Modbus unit id the module answers to. */
+export const UNIT_ID = 1;
+
+/** Channel states packed LSB first, eight to a byte, as FC02 / FC15 carry them. */
+export function packBits(bits: boolean[]): number[] {
+  const out = Array<number>(Math.ceil(bits.length / 8)).fill(0);
+  bits.forEach((on, i) => {
+    if (on) out[i >> 3] |= 1 << (i & 7);
+  });
+  return out;
+}
+
+/** MBAP header (transaction, protocol 0, length, unit) in front of a PDU. */
+export function modbusAdu(tid: number, pdu: number[]): number[] {
+  const len = pdu.length + 1;
+  return [(tid >> 8) & 0xff, tid & 0xff, 0, 0, len >> 8, len & 0xff, UNIT_ID, ...pdu];
 }
 
 /**
@@ -23,7 +55,7 @@ export class DigitalIoSimulator extends Simulator<DioState> {
     name: 'Digital I/O Controller',
     category: 'Industrial Tools',
     icon: 'io',
-    tagline: 'Discrete input / output block with per-channel toggles and change events.',
+    tagline: 'An ESP32 + W5500 I/O box with field sensors and actuators wired to it, its Modbus map and every frame.',
     description:
       'Simulates a discrete I/O module: toggle any input or output and watch the change notification your backend receives. The same model covers an ESP32 board, a W5500 module or a Modbus TCP coupler — only the transport differs. On REST the change is really posted to your endpoint and the response is shown; Modbus and MQTT frames are generated, because a browser cannot open those sockets.',
     protocols: ['Modbus TCP', 'REST', 'MQTT'],
@@ -80,7 +112,15 @@ export class DigitalIoSimulator extends Simulator<DioState> {
 
   protected initialState(): DioState {
     const n = this.channelCount();
-    return { inputs: Array(n).fill(false), outputs: Array(n).fill(false), changes: 0 };
+    return {
+      inputs: Array(n).fill(false),
+      outputs: Array(n).fill(false),
+      changes: 0,
+      hits: { DI: Array(n).fill(0), DO: Array(n).fill(0) },
+      at: { DI: Array(n).fill(null), DO: Array(n).fill(null) },
+      adu: null,
+      tid: 0,
+    };
   }
 
   private channelCount(): number {
@@ -91,8 +131,40 @@ export class DigitalIoSimulator extends Simulator<DioState> {
   /** Channel count is config-driven, so the state arrays have to follow it. */
   protected onConfigApplied() {
     const n = this.channelCount();
-    const fit = (arr: boolean[]) => Array.from({ length: n }, (_, i) => arr[i] ?? false);
-    this.state = { ...this.state, inputs: fit(this.state.inputs), outputs: fit(this.state.outputs) };
+    const fit = <T,>(arr: T[], empty: T) => Array.from({ length: n }, (_, i) => arr[i] ?? empty);
+    const st = this.state;
+    this.state = {
+      ...st,
+      inputs: fit(st.inputs, false),
+      outputs: fit(st.outputs, false),
+      hits: { DI: fit(st.hits.DI, 0), DO: fit(st.hits.DO, 0) },
+      at: { DI: fit(st.at.DI, null), DO: fit(st.at.DO, null) },
+    };
+  }
+
+  /** Count the change on each channel that moved and stamp it. */
+  private mark(kind: ChannelKind, moved: number[]) {
+    if (!moved.length) return;
+    const now = new Date().toISOString();
+    const hits = [...this.state.hits[kind]];
+    const at = [...this.state.at[kind]];
+    for (const i of moved) {
+      hits[i]++;
+      at[i] = now;
+    }
+    this.setState({ hits: { ...this.state.hits, [kind]: hits }, at: { ...this.state.at, [kind]: at } });
+  }
+
+  /** Keep the Modbus frame this change puts on the wire, whatever the transport. */
+  private frameAdu(fc: number, note: string, pdu: number[]) {
+    const tid = (this.state.tid + 1) & 0xffff;
+    this.setState({ tid, adu: { fc, note, bytes: modbusAdu(tid, [fc, ...pdu]) } });
+  }
+
+  /** FC02 response: the whole input block, as the master reads it after a change. */
+  private inputsAdu(note: string) {
+    const data = packBits(this.state.inputs);
+    this.frameAdu(0x02, note, [data.length, ...data]);
   }
 
   protected identity() {
@@ -123,7 +195,17 @@ export class DigitalIoSimulator extends Simulator<DioState> {
     next[index] = !next[index];
     this.setState({ [key]: next } as Partial<DioState>);
     this.setState({ changes: this.state.changes + 1 });
+    this.mark(kind, [index]);
+    const name = this.channelName(kind, index);
+    if (kind === 'DI') this.inputsAdu(`FC02 response · ${name} ${next[index] ? 'ON' : 'OFF'}`);
+    else this.frameAdu(0x05, `FC05 write ${name} ${next[index] ? 'ON' : 'OFF'}`, [0, index, next[index] ? 0xff : 0, 0]);
     this.emitChange(kind, index, list[index], next[index]);
+  }
+
+  /** Drive a channel to a level: a push button held down, then let go. */
+  set(kind: ChannelKind, index: number, on: boolean) {
+    const list = kind === 'DI' ? this.state.inputs : this.state.outputs;
+    if (list[index] !== undefined && list[index] !== on) this.toggle(kind, index);
   }
 
   channelName(kind: ChannelKind, index: number): string {
@@ -197,6 +279,8 @@ export class DigitalIoSimulator extends Simulator<DioState> {
     const before = this.state.inputs;
     const after = before.map(() => Math.random() < 0.4);
     this.setState({ inputs: after, changes: this.state.changes + 1 });
+    this.mark('DI', after.flatMap((v, i) => (v !== before[i] ? [i] : [])));
+    this.inputsAdu('FC02 response · inputs randomized');
     const changed = after
       .map((v, i) => ({ channel: this.channelName('DI', i), from: before[i] ? 'ON' : 'OFF', to: v ? 'ON' : 'OFF' }))
       .filter((_, i) => before[i] !== after[i]);
@@ -227,6 +311,10 @@ export class DigitalIoSimulator extends Simulator<DioState> {
     const before = this.state.outputs;
     if (!before.some(Boolean)) return;
     this.setState({ outputs: before.map(() => false), changes: this.state.changes + 1 });
+    this.mark('DO', before.flatMap((v, i) => (v ? [i] : [])));
+    const n = before.length;
+    const data = packBits(this.state.outputs);
+    this.frameAdu(0x0f, `FC15 write ${n} coils OFF`, [0, 0, n >> 8, n & 0xff, data.length, ...data]);
     const payload = {
       device_id: this.cfg('deviceId'),
       outputs: this.wordOf(this.state.outputs),
@@ -245,7 +333,7 @@ export class DigitalIoSimulator extends Simulator<DioState> {
     return parseInt(bits, 2) || 0;
   }
 
-  private wordOf(channels: boolean[]): string {
+  wordOf(channels: boolean[]): string {
     return `0x${this.wordValue(channels).toString(16).toUpperCase().padStart(4, '0')}`;
   }
 

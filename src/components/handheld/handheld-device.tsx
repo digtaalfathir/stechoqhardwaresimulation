@@ -4,7 +4,7 @@ import type { SimEvent } from '../../simulators/core/types';
 import { useSimulator } from '../../lib/use-simulator';
 import { useT } from '../../lib/i18n';
 import { EventStream, PayloadInspector } from '../event-stream';
-import { SendResult } from '../device-panels';
+import { SendResult } from '../send-result';
 import { CommunicationLog } from '../workspace';
 import { HandheldApp } from './handheld-app';
 import { beep } from './sound';

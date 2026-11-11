@@ -1,0 +1,457 @@
+/* ============================================================================
+   Digital I/O workspace: the ESP32 + W5500 box on its DIN rail with the field
+   devices wired to it, the Modbus process image and the last frame, then a
+   table per direction. The scene is an SVG scaled to fit.
+   ========================================================================== */
+
+.dio-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 9px 14px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+}
+.dio-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.dio-dot.on {
+  background: #17a55f;
+  box-shadow: 0 0 0 4px rgba(23, 165, 95, 0.18);
+}
+.dio-kv {
+  white-space: nowrap;
+}
+.dio-kv b {
+  font-family: var(--mono);
+  font-weight: 600;
+}
+.dio-select {
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.dio-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+  align-items: start;
+}
+.dio-tables {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .dio-top,
+  .dio-tables {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* --- scene ------------------------------------------------------------------ */
+
+.dio-scene-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dio-stage-box {
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  background: #eef1f4;
+}
+.dio-stage {
+  display: block;
+  flex: none;
+  user-select: none;
+  font-family: var(--sans);
+}
+.dio-wall {
+  fill: #eef1f4;
+}
+.dio-plate {
+  fill: #dce1e6;
+  stroke: #c3cad1;
+}
+.dio-plate-label,
+.dio-mono {
+  font-family: var(--mono);
+  font-size: 9px;
+  fill: #56606a;
+}
+.dio-plate-label {
+  fill: #8a939c;
+  letter-spacing: 1.5px;
+}
+.dio-mono.tiny {
+  font-size: 7.5px;
+}
+.dio-mono.num {
+  font-size: 8.5px;
+}
+.dio-mono.id {
+  font-size: 10px;
+  font-weight: 700;
+  fill: #2b3036;
+}
+.dio-mono.chip {
+  font-size: 6.5px;
+  font-weight: 700;
+  fill: #3a4148;
+}
+.dio-mono.light {
+  fill: #dfe5ea;
+}
+.dio-mono.lan {
+  fill: #2f5c9e;
+}
+.dio-label text {
+  text-anchor: middle;
+}
+.dio-label .ch {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  fill: #4a525c;
+}
+.dio-label .ch.on {
+  fill: #0d7a4c;
+}
+.dio-label .name {
+  font-size: 9px;
+  fill: #78818d;
+}
+
+.dio-wire path {
+  fill: none;
+  stroke: #8d97a2;
+  stroke-width: 2.6;
+}
+.dio-wire.on.di path {
+  stroke: #169a52;
+}
+.dio-wire.on.do path {
+  stroke: #e08a00;
+}
+.dio-wire .glow {
+  stroke-width: 7 !important;
+  opacity: 0.25;
+}
+.dio-pwr {
+  fill: none;
+  stroke-width: 2.4;
+}
+.dio-pwr.p24 {
+  stroke: #c0392b;
+}
+.dio-pwr.p0 {
+  stroke: #1d4f91;
+}
+.dio-lan {
+  fill: none;
+  stroke: #2f6fd0;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.dio-dev {
+  cursor: pointer;
+  outline: none;
+}
+.dio-dev .hit {
+  fill: transparent;
+  rx: 6px;
+}
+.dio-dev:hover .hit {
+  fill: rgba(15, 76, 129, 0.06);
+}
+.dio-dev:focus-visible .hit {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.dio-move {
+  transition: x 0.2s ease, width 0.2s ease;
+}
+.dio-blink {
+  animation: dio-blink 1s steps(2, start) infinite;
+}
+@keyframes dio-blink {
+  to {
+    visibility: hidden;
+  }
+}
+.dio-spin {
+  animation: dio-spin 0.6s linear infinite;
+}
+@keyframes dio-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dio-blink,
+  .dio-spin {
+    animation: none;
+  }
+}
+
+.dio-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+.dio-strip small {
+  font-size: 12px;
+}
+.dio-count {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+:root[data-theme='dark'] .dio-stage-box {
+  background: #1f252d;
+}
+:root[data-theme='dark'] .dio-wall {
+  fill: #1f252d;
+}
+:root[data-theme='dark'] .dio-plate {
+  fill: #2a313a;
+  stroke: #3a434e;
+}
+:root[data-theme='dark'] .dio-label .ch {
+  fill: #c3ccd6;
+}
+:root[data-theme='dark'] .dio-label .ch.on {
+  fill: #52c98d;
+}
+:root[data-theme='dark'] .dio-label .name,
+:root[data-theme='dark'] .dio-plate-label {
+  fill: #8d98a6;
+}
+:root[data-theme='dark'] .dio-mono.lan {
+  fill: #6db4f2;
+}
+:root[data-theme='dark'] .dio-dev:hover .hit {
+  fill: rgba(255, 255, 255, 0.05);
+}
+
+/* --- process image ----------------------------------------------------------- */
+
+.dio-pi-body {
+  padding: 12px 14px;
+  display: grid;
+  gap: 14px;
+}
+.dio-pi h4 {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.dio-pi h4 .muted {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.dio-pi h4 b {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  text-transform: none;
+}
+.dio-bits {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+}
+.dio-bits button {
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 4px 0 3px;
+  background: var(--panel-alt);
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  cursor: pointer;
+  min-width: 0;
+}
+.dio-bits button b {
+  display: block;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.dio-bits button.on {
+  background: var(--ok-bg);
+  border-color: var(--ok-line);
+  color: var(--ok);
+}
+.dio-bits button.on b {
+  color: var(--ok);
+}
+.dio-bits.do button.on {
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
+  color: var(--warn);
+}
+.dio-bits.do button.on b {
+  color: var(--warn);
+}
+.dio-frame {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.dio-frame span {
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+.dio-legend {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.dio-legend div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.dio-legend i {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dio-note,
+.dio-empty {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+.dio-pre {
+  margin: 0;
+  padding: 10px;
+  max-height: 240px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: var(--panel-sunken);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.dio-k1 { background: #e6eef8; color: #164a7e; }
+.dio-k2 { background: #eef0f3; color: #4a525c; }
+.dio-k3 { background: #f1e9f9; color: #5b2d8a; }
+.dio-k4 { background: #fff1dc; color: #8a5300; }
+.dio-k5 { background: #e3f4ea; color: #0d6a40; }
+.dio-k6 { background: #fdebea; color: #a42820; }
+:root[data-theme='dark'] .dio-k1 { background: #172a40; color: #8fc1f0; }
+:root[data-theme='dark'] .dio-k2 { background: #232a33; color: #aab4c2; }
+:root[data-theme='dark'] .dio-k3 { background: #2a1f3a; color: #c9a8ef; }
+:root[data-theme='dark'] .dio-k4 { background: #2e2413; color: #e8b866; }
+:root[data-theme='dark'] .dio-k5 { background: #12301f; color: #6fd6a0; }
+:root[data-theme='dark'] .dio-k6 { background: #3a1a18; color: #f0948c; }
+
+/* --- channel tables ---------------------------------------------------------- */
+
+.dio-table-wrap {
+  overflow-x: auto;
+}
+.dio-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.dio-table th {
+  text-align: left;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 700;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-alt);
+  white-space: nowrap;
+}
+.dio-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.dio-table td.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.dio-comment {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  min-width: 120px;
+  padding: 3px 6px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink);
+}
+.dio-comment:focus {
+  border-style: solid;
+  border-color: var(--accent);
+  outline: none;
+}
+.dio-pill {
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 9px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.dio-pill.on.di {
+  color: var(--ok);
+  background: var(--ok-bg);
+  border-color: var(--ok-line);
+}
+.dio-pill.on.do {
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
+}
