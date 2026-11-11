@@ -65,7 +65,7 @@
 .hh-range {
   position: absolute;
   inset: 0;
-  overflow: visible;
+  overflow: hidden;
   pointer-events: none;
 }
 .hh-beam {
@@ -271,11 +271,12 @@
 /* Behind the body, its face turned right toward the bench. */
 .hh-antenna {
   position: absolute;
-  left: 196px;
-  top: 200px;
+  left: 180px;
+  top: 40px;
   width: 250px;
   height: 278px;
-  transform: rotate(10deg);
+  /* up top, turned to aim down and to the right like the beam it sends */
+  transform: rotate(25deg);
   border-radius: 110px 30px 26px 26px / 70px 30px 26px 26px;
   background: linear-gradient(135deg, #3a4048, #1b1f24 60%, #111316);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 18px 30px rgba(0, 0, 0, 0.25);

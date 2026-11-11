@@ -238,7 +238,11 @@ async function main() {
   assert(rfid.transmission.sent === 1, 'a scan that read nothing sends nothing');
   rfid.applyConfig({ power: 300 });
   assert(rfid.inRange({ epc: 'X', x: BENCH.width - 5, y: ANTENNA.y }), 'full power reaches the far end of the bench');
-  assert(!rfid.inRange({ epc: 'X', x: ANTENNA.x + 75, y: ANTENNA.y + 320 }), 'a tag beside the beam is not read, however near');
+  assert(!rfid.inRange({ epc: 'X', x: ANTENNA.x + 75, y: ANTENNA.y - 150 }), 'a tag above the beam is not read, however near');
+  rfid.setBenchWidth(900);
+  assert(rfid.inRange({ epc: 'X', x: 895, y: ANTENNA.y }), 'a wider bench is still reached end to end at full power');
+  rfid.setBenchWidth(BENCH.width);
+  assert(rfid.state.bench.every((t) => t.x <= BENCH.width - 70), 'narrowing the bench pulls tags back onto it');
   rfid.applyConfig({ power: 200 });
   rfid.setPowerPreview(50);
   assert(!rfid.inRange(tagAt('BBBB'), rfid.state.powerPreview!) && rfid.inRange(tagAt('BBBB')), 'a previewed power is drawn, not used to read');

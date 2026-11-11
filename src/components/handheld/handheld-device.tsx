@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ANTENNA, BEAM, BENCH, quality, type RfidHandheldSimulator } from '../../simulators/rfid/rfid-handheld';
+import { AIM, ANTENNA, BEAM, BENCH, quality, type RfidHandheldSimulator } from '../../simulators/rfid/rfid-handheld';
 import type { SimEvent } from '../../simulators/core/types';
 import { useSimulator } from '../../lib/use-simulator';
 import { useT } from '../../lib/i18n';
@@ -10,10 +10,12 @@ import { HandheldApp } from './handheld-app';
 import { beep } from './sound';
 import './handheld.css';
 
-/** The stage is drawn at this size and scaled to fit the column and the window. */
-const STAGE = { width: 840, height: 880 };
+/** The stage's height is fixed and scaled to fit the window; its width grows with the bench. */
+const STAGE = { height: 880 };
 /** Where the bench starts: right at the antenna's face. */
-const BENCH_LEFT = 450;
+const BENCH_LEFT = 436;
+/** Past this a wider bench only spreads the tags thinner. */
+const BENCH_MAX = 2000;
 
 /**
  * The handheld workspace: the device and the tags on the bench beside it, with
@@ -64,12 +66,21 @@ function Stage({ sim }: { sim: RfidHandheldSimulator }) {
     if (!el) return;
     // The whole device should be visible without scrolling: fit what is left of
     // the window below the header, not the whole window.
+    //
+    // The height sets the scale; whatever width is left over goes to the bench,
+    // so the tags get the whole panel instead of a strip beside empty space.
     const fit = () => {
       const top = el.getBoundingClientRect().top + window.scrollY;
       const room = window.innerHeight - Math.min(top, window.innerHeight * 0.45) - 16;
-      const byWidth = (el.clientWidth - 24) / STAGE.width;
-      const byHeight = Math.max(0.5, room / STAGE.height);
-      setScale(Math.min(1, byWidth, byHeight));
+      const avail = el.clientWidth - 24;
+      let s = Math.min(1, Math.max(0.5, room / STAGE.height));
+      let bench = avail / s - BENCH_LEFT - 12;
+      if (bench < BENCH.width) {
+        bench = BENCH.width;
+        s = Math.min(s, avail / (BENCH_LEFT + BENCH.width + 12));
+      }
+      sim.setBenchWidth(Math.min(BENCH_MAX, bench));
+      setScale(s);
     };
     fit();
     const ro = new ResizeObserver(fit);
@@ -87,7 +98,10 @@ function Stage({ sim }: { sim: RfidHandheldSimulator }) {
   return (
     <section className="panel hh-stage-panel" ref={wrap}>
       <div className="hh-stage-box" style={{ height: STAGE.height * scale }}>
-        <div className="hh-stage" style={{ width: STAGE.width, height: STAGE.height, transform: `scale(${scale})` }}>
+        <div
+          className="hh-stage"
+          style={{ width: BENCH_LEFT + sim.state.benchWidth + 12, height: STAGE.height, transform: `scale(${scale})` }}
+        >
           <Bench sim={sim} scale={scale} />
           <Device sim={sim} />
         </div>
@@ -280,10 +294,10 @@ function Bench({ sim, scale }: { sim: RfidHandheldSimulator; scale: number }) {
   };
 
   return (
-    <div className="hh-bench-area" style={{ left: BENCH_LEFT, width: BENCH.width }}>
+    <div className="hh-bench-area" style={{ left: BENCH_LEFT, width: st.benchWidth }}>
       <div
         className="hh-bench"
-        style={{ width: BENCH.width, height: BENCH.height }}
+        style={{ width: st.benchWidth, height: BENCH.height }}
         onPointerMove={(e) => {
           const d = drag.current;
           if (!d) return;
@@ -292,7 +306,7 @@ function Bench({ sim, scale }: { sim: RfidHandheldSimulator; scale: number }) {
         }}
         onPointerUp={() => (drag.current = null)}
       >
-        <Beam range={range} live={st.scanning} />
+        <Beam range={range} width={st.benchWidth} live={st.scanning} />
         <span className="hh-range-label">
           {t('hh.range', 'Antenna range')} · Power {power}
           {st.powerPreview !== null && <em> · {t('hh.unsaved', 'not saved yet')}</em>}
@@ -368,16 +382,19 @@ function Bench({ sim, scale }: { sim: RfidHandheldSimulator; scale: number }) {
  * fanning out to the right, the outermost one at the edge of the range. The
  * fan is the beam the engine reads within, so what is drawn is what is read.
  */
-function Beam({ range, live }: { range: number; live: boolean }) {
+function Beam({ range, width, live }: { range: number; width: number; live: boolean }) {
   const { x, y } = ANTENNA;
+  const from = AIM - BEAM;
+  const to = AIM + BEAM;
   const at = (r: number, a: number) => `${(x + r * Math.cos(a)).toFixed(1)} ${(y + r * Math.sin(a)).toFixed(1)}`;
-  const arc = (r: number) => `M ${at(r, -BEAM)} A ${r} ${r} 0 0 1 ${at(r, BEAM)}`;
+  const arc = (r: number) => `M ${at(r, from)} A ${r} ${r} 0 0 1 ${at(r, to)}`;
   const arcs = [1, 2, 3, 4].map((i) => (range * i) / 4);
+  // Clipped to the bench: past its bottom there is nothing to read anyway.
   return (
-    <svg className={`hh-range${live ? ' live' : ''}`} width={BENCH.width} height={BENCH.height} aria-hidden="true">
+    <svg className={`hh-range${live ? ' live' : ''}`} width={width} height={BENCH.height} aria-hidden="true">
       {range > 0 && (
         <>
-          <path className="hh-beam" d={`M ${x} ${y} L ${at(range, -BEAM)} A ${range} ${range} 0 0 1 ${at(range, BEAM)} Z`} />
+          <path className="hh-beam" d={`M ${x} ${y} L ${at(range, from)} A ${range} ${range} 0 0 1 ${at(range, to)} Z`} />
           {arcs.map((r, i) => (
             <path key={i} className="hh-arc" d={arc(r)} style={{ animationDelay: `${i * 0.14}s` }} />
           ))}

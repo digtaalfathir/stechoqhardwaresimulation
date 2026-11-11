@@ -41,16 +41,19 @@ export const LOG_MAX = 30;
 // (0-300, as on the Zebra). A tag inside the range is read while the trigger is
 // held, more often and stronger the closer it lies. Units are the bench's own
 // pixels, so the view can draw it 1:1. The device stands at the bench's left
-// edge with its antenna facing right, into the bench. The antenna is
-// directional: it reads within a fan, not all around.
+// edge, its antenna up top and tilted to aim down and to the right. The
+// antenna is directional: it reads within a fan, not all around.
+//
+// The bench is as wide as the screen leaves room for (the view tells the
+// device, setBenchWidth); full power always reaches its far end.
 
+/** Minimum width, and the bench's height. */
 export const BENCH = { width: 380, height: 700 };
-/** Halfway down the bench, so even the full-power fan fits on it. */
-export const ANTENNA = { x: 0, y: 340 };
-/** Read range at full power (300): right across the bench. */
-export const MAX_RANGE = BENCH.width;
-/** Half-angle of the antenna's beam, in radians (±50°). */
-export const BEAM = (50 * Math.PI) / 180;
+export const ANTENNA = { x: 0, y: 232 };
+/** Where the beam points: 35° below horizontal. */
+export const AIM = (35 * Math.PI) / 180;
+/** Half-angle of the beam (±45° around AIM). */
+export const BEAM = (45 * Math.PI) / 180;
 const TICK_MS = 100;
 
 export interface BenchTag {
@@ -144,6 +147,8 @@ interface HandheldState extends TagReaderState {
   replacementFailure: SendFailure | null;
   /** Power being dragged in Pengaturan, not saved yet: the bench shows its range live. */
   powerPreview: number | null;
+  /** How wide the bench is drawn; full power reaches its far end. */
+  benchWidth: number;
   master: MasterStatus;
   masterError: string | null;
   masterFrom: string | null;
@@ -151,14 +156,15 @@ interface HandheldState extends TagReaderState {
   log: SendLog[];
 }
 
-// Four within reach at the default power (near, near, mid, edge), two outside it.
+// Four within reach at the default power (near, near, mid, edge); one past the
+// range and one above the beam.
 const DEFAULT_BENCH: BenchTag[] = [
-  { epc: 'E280689400004025A987A05A', x: 100, y: 235 },
-  { epc: 'E280689400004025AD44841C', x: 135, y: 335 },
-  { epc: 'E28068940000502B56E4B56D', x: 120, y: 460 },
-  { epc: 'E28068940000402663B08D7A', x: 235, y: 420 },
-  { epc: 'E2806894000050367572D095', x: 300, y: 580 },
-  { epc: 'E28068940000502B56E5EEF0', x: 170, y: 80 },
+  { epc: 'E280689400004025A987A05A', x: 128, y: 255 },
+  { epc: 'E280689400004025AD44841C', x: 96, y: 347 },
+  { epc: 'E28068940000502B56E4B56D', x: 79, y: 427 },
+  { epc: 'E28068940000402663B08D7A', x: 227, y: 317 },
+  { epc: 'E2806894000050367572D095', x: 286, y: 397 },
+  { epc: 'E28068940000502B56E5EEF0', x: 246, y: 60 },
 ];
 
 /**
@@ -261,6 +267,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       replacementSending: false,
       replacementFailure: null,
       powerPreview: null,
+      benchWidth: BENCH.width,
       master: 'idle',
       masterError: null,
       masterFrom: null,
@@ -415,7 +422,12 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
 
   /** Read range in bench pixels; follows Power like the real RF output. */
   range(power = this.num('power')): number {
-    return (MAX_RANGE * Math.min(300, Math.max(0, power))) / 300;
+    return (this.maxRange() * Math.min(300, Math.max(0, power))) / 300;
+  }
+
+  /** Full power: the beam's upper edge just reaches the bench's far end. */
+  maxRange(): number {
+    return this.state.benchWidth / Math.cos(AIM - BEAM);
   }
 
   distance(t: BenchTag): number {
@@ -425,10 +437,24 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
   /** Within reach and inside the beam: a tag beside or behind the antenna is not read. */
   inRange(t: BenchTag, power?: number): boolean {
     const angle = Math.atan2(t.y - ANTENNA.y, t.x - ANTENNA.x);
-    return Math.abs(angle) <= BEAM && this.distance(t) <= this.range(power);
+    return Math.abs(angle - AIM) <= BEAM && this.distance(t) <= this.range(power);
   }
 
   /** The bench previews a Power value while it is dragged; null drops the preview. */
+  /**
+   * The view's room for the bench. The range grows with it, so the tags are
+   * spread across in proportion: what was near stays near, what was out of
+   * reach stays out, on any screen.
+   */
+  setBenchWidth(width: number) {
+    const w = Math.max(BENCH.width, Math.round(width));
+    const was = this.state.benchWidth;
+    if (Math.abs(w - was) < 2) return;
+    const k = w / was;
+    this.state = { ...this.state, benchWidth: w };
+    this.setState({ bench: this.state.bench.map((t) => ({ ...t, ...this.clamp(t.x * k, t.y) })) });
+  }
+
   setPowerPreview(power: number | null) {
     if (power === this.state.powerPreview) return;
     this.setState({ powerPreview: power });
@@ -442,7 +468,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
   /** A tag's centre stays far enough in that the whole label is on the bench. */
   private clamp(x: number, y: number) {
     return {
-      x: Math.round(Math.min(BENCH.width - 70, Math.max(70, x))),
+      x: Math.round(Math.min(this.state.benchWidth - 70, Math.max(70, x))),
       y: Math.round(Math.min(BENCH.height - 32, Math.max(32, y))),
     };
   }
@@ -455,7 +481,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     let pos = at;
     if (!pos) {
       const r = this.range() * (0.3 + Math.random() * 0.55);
-      const a = Math.PI * (Math.random() * 0.5 - 0.25);
+      const a = AIM + BEAM * (Math.random() * 1.2 - 0.6);
       pos = { x: ANTENNA.x + r * Math.cos(a), y: ANTENNA.y + r * Math.sin(a) };
     }
     this.setState({ bench: [...this.state.bench, { epc: id, ...this.clamp(pos.x, pos.y) }] });
