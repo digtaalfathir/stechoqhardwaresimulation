@@ -15,6 +15,8 @@ import { RfidReaderSimulator } from '../simulators/rfid/rfid-reader';
 import { GateWorkspace } from './gate/gate-workspace';
 import { McPlcSimulator } from '../simulators/plc/mc-plc';
 import { PlcWorkspace } from './plc/plc-workspace';
+import { NutrunnerSimulator } from '../simulators/nutrunner/nutrunner';
+import { NutrunnerWorkspace } from './nutrunner/nr-workspace';
 
 const STATUS_TONE: Record<DeviceStatus, Tone> = {
   OFFLINE: 'neutral',
@@ -96,6 +98,9 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
       ) : sim instanceof McPlcSimulator ? (
         // The PLC is a cabinet with a rack in it, and the engineer's tools below.
         <PlcWorkspace sim={sim} />
+      ) : sim instanceof NutrunnerSimulator ? (
+        // The nutrunner is a tightening station with its live curve.
+        <NutrunnerWorkspace sim={sim} />
       ) : (
       <>
       <ConfigPanel key={sim.meta.id} sim={sim} />

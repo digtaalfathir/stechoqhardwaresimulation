@@ -777,6 +777,25 @@ async function main() {
   assert(nut.state.batchCounter === 0, 'the batch counter rolls over once complete');
 
   // A tool alarm is a MID 0071 telegram, not a silent failure.
+  // Holding the trigger runs the fastening to the end; letting go early is NG.
+  assert(nut.state.points.length > 2 && nut.state.points.every((p) => p.length === 2), 'the run is kept as angle/torque points');
+  assert(nut.state.lastTelegram?.slice(4, 8) === '0061', 'the last MID 0061 is kept for the decoder');
+  const prevRun = nut.state.points.length;
+  nut.pressTrigger();
+  assert(nut.state.phase === 'TIGHTENING' && nut.state.held, 'holding the trigger starts a fastening');
+  assert(nut.state.prevPoints.length === prevRun, 'the previous run stays for comparison');
+  await sleep(1800);
+  assert(nut.state.phase === 'OK' || nut.state.phase === 'NG', 'the controller shuts off by itself at the end');
+  nut.releaseTrigger();
+  assert(!nut.state.held, 'letting go after the shut-off changes nothing');
+  const idBefore = nut.state.tighteningId;
+  nut.pressTrigger();
+  await sleep(300);
+  nut.releaseTrigger();
+  assert(nut.state.phase === 'NG' && nut.state.torqueStatus === 'LOW', `letting go early is NG with torque LOW (got ${nut.state.phase} ${nut.state.torqueStatus})`);
+  assert(nut.state.tighteningId === idBefore + 1, 'an early release is still reported as a fastening');
+  assert(nut.events.some((e) => e.name === 'TRIGGER_RELEASED_EARLY'), 'the early release is logged');
+
   nut.run('trigger-error');
   assert(nut.state.phase === 'ERROR' && nut.status === 'ERROR', 'a tool alarm puts the device in ERROR');
   const alarm = nut.events[0];

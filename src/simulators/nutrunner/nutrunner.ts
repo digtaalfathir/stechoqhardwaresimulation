@@ -45,6 +45,15 @@ interface NutrunnerState {
   batchDone: boolean;
   /** MID 0061 field 23 — increments for every reported fastening. */
   tighteningId: number;
+  /** The run as [angle, torque] points, for the torque-over-angle curve. */
+  points: [number, number][];
+  /** The previous run, drawn faintly beside the current one. */
+  prevPoints: [number, number][];
+  prevResult: 'OK' | 'NG' | null;
+  /** The last MID 0061 exactly as built, for the telegram decoder. */
+  lastTelegram: string | null;
+  /** The operator is holding the trigger. */
+  held: boolean;
 }
 
 const STEPS = 14;
@@ -75,7 +84,7 @@ export class NutrunnerSimulator extends Simulator<NutrunnerState> {
     name: 'Nutrunner / Tightening Tool',
     category: 'Industrial Tools',
     icon: 'wrench',
-    tagline: 'Torque-controlled tightening reported as real Open Protocol MID 0061 telegrams.',
+    tagline: 'A tightening station with its controller, a torque × angle curve and Open Protocol MID 0061 telegrams to inspect.',
     description:
       'Simulates a tightening controller speaking Open Protocol: a torque and angle ramp toward the target, judged per limit the way a real controller judges it, then reported as a byte-accurate MID 0061 telegram inside a real session (MID 0001/0002 handshake, MID 0060 subscribe, MID 0062 acknowledge). Forced NG, low and high torque, and tool alarms are one click away. Telegrams are generated for inspection — a browser cannot open a TCP socket to port 4545.',
     protocols: ['Open Protocol'],
@@ -200,7 +209,41 @@ export class NutrunnerSimulator extends Simulator<NutrunnerState> {
       batchCounter: 0,
       batchDone: false,
       tighteningId: 0,
+      points: [],
+      prevPoints: [],
+      prevResult: null,
+      lastTelegram: null,
+      held: false,
     };
+  }
+
+  // --- trigger --------------------------------------------------------------
+
+  private ramp: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * The tool's trigger. Holding it runs the fastening; the controller shuts off
+   * on its own once the target is reached. Letting go before that stops the
+   * spindle where it is — torque short of the window, so the result is NG,
+   * exactly as when an operator lets go too early.
+   */
+  pressTrigger() {
+    if (this.status === 'OFFLINE' || this.state.phase === 'TIGHTENING') return;
+    this.setState({ held: true });
+    this.startCycle('auto');
+  }
+
+  releaseTrigger() {
+    if (!this.state.held) return;
+    this.setState({ held: false });
+    if (this.state.phase !== 'TIGHTENING') return;
+    this.stop(this.ramp);
+    this.ramp = null;
+    this.emit('TRIGGER_RELEASED_EARLY', { torque: this.state.torque, angle: this.state.angle }, {
+      tone: 'warn',
+      summary: `Trigger released at ${this.state.torque.toFixed(2)} ${this.cfg('torqueUnit')} — spindle stopped short`,
+    });
+    this.finish(this.state.torque, this.state.angle);
   }
 
   protected identity() {
@@ -340,7 +383,17 @@ export class NutrunnerSimulator extends Simulator<NutrunnerState> {
     finalAngle = Math.max(1, Math.round(finalAngle));
 
     this.status = 'SIMULATING';
-    this.setState({ phase: 'TIGHTENING', torque: 0, angle: 0, curve: [], progress: 0, errorCode: null });
+    this.setState({
+      phase: 'TIGHTENING',
+      torque: 0,
+      angle: 0,
+      curve: [],
+      progress: 0,
+      errorCode: null,
+      prevPoints: this.state.points,
+      prevResult: this.state.lastResult,
+      points: [[0, 0]],
+    });
     this.emit(
       'TIGHTENING_STARTED',
       {
@@ -362,12 +415,20 @@ export class NutrunnerSimulator extends Simulator<NutrunnerState> {
       // Rundown then torque build-up: slow start, steep finish.
       const torque = round(finalTorque * Math.min(1, t ** 2.2), 2);
       const angle = Math.round(finalAngle * Math.min(1, t ** 0.75));
-      this.setState({ torque, angle, curve: [...this.state.curve, torque], progress: Math.min(1, t) });
+      this.setState({
+        torque,
+        angle,
+        curve: [...this.state.curve, torque],
+        points: [...this.state.points, [angle, torque]],
+        progress: Math.min(1, t),
+      });
       if (step >= STEPS) {
         this.stop(tick);
+        this.ramp = null;
         this.finish(finalTorque, finalAngle);
       }
     });
+    this.ramp = tick;
   }
 
   private finish(torque: number, angle: number) {
@@ -434,6 +495,7 @@ export class NutrunnerSimulator extends Simulator<NutrunnerState> {
     const port = this.num('port');
     const result0061 = this.mid0061(payload, at);
     const ack = telegram({ mid: 62, stationId: this.num('cellId'), spindleId: this.num('channelId') });
+    this.setState({ lastTelegram: result0061 });
 
     const reason = result === 'OK' ? '' : ` (torque ${torqueStatus}, angle ${angleStatus})`;
     this.emit('TIGHTENING_RESULT', payload, {

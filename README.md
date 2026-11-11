@@ -82,6 +82,14 @@ consumer's parser can be checked against them byte for byte. Telegram building a
 [src/simulators/nutrunner/open-protocol.ts](src/simulators/nutrunner/open-protocol.ts); `npm run check`
 asserts the declared length, every field offset and the torque x100 encoding.
 
+The workspace is a **tightening station**: a tower controller in the style of a CVI3 (no logo) whose
+screen shows torque and angle against their limits, the tool hanging from its balancer over a plain
+workpiece with one bolt per fastening in the batch. **Holding the trigger** (the button or the space
+bar) runs the fastening; letting go early stops it short and reports NG with torque LOW, as a real tool
+does. Beside it the torque × angle curve is drawn live inside its acceptance window, with the previous
+curve faint behind it; under it, the last results and the latest MID 0061 split field by field. The
+station is in [src/components/nutrunner/](src/components/nutrunner/).
+
 The PLC is the one device a browser cannot be on its own: an acquisition program *connects to* a
 PLC, and a page can neither accept a TCP connection nor start a program on the visitor's machine. So
 the socket half is [public/mc-plc.mjs](public/mc-plc.mjs) — one file, no dependencies, **served by
@@ -150,6 +158,7 @@ src/
 ├── components/          Workspace, event stream, inspector, device panels, settings menu
 │   ├── handheld/        The MC33 device, its tag bench and the WMS RFID Suite app
 │   ├── gate/            The isometric 8-antenna gate and the forklift going through
+│   ├── nutrunner/       The tightening station, the torque curve and the MID 0061 decoder
 │   └── plc/             The Q-series rack, the device monitor and the frame decoder
 ├── pages/               Home, explorer, workspace, docs, about
 ├── lib/                 Hash router, React binding, settings store, i18n
@@ -192,8 +201,9 @@ export class ConveyorSimulator extends Simulator<ConveyorState> {
 }
 ```
 
-A device that needs a purpose-built view (a torque curve, a channel grid) adds a case to
-`src/components/device-panels.tsx`. Everything else stays generic.
+A device that needs a purpose-built view (a channel grid) adds a case to
+`src/components/device-panels.tsx`; one that needs a whole workspace of its own (handheld, gate,
+nutrunner, PLC) gets a folder under `src/components/` and a branch in `workspace.tsx`. Everything else stays generic.
 
 Devices that need a new protocol view add a builder returning a `TransportFrame` in
 `src/simulators/core/wire.ts`; the inspector prints whatever it is handed.
