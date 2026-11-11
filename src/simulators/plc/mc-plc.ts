@@ -407,6 +407,19 @@ export class McPlcSimulator extends Simulator<PlcState> {
     return null;
   }
 
+  /**
+   * The Stop button. Every tab's PLC goes with the bridge; their registers stay
+   * in each view and are put back when it is started again.
+   */
+  stopBridge() {
+    void this.dispatch({}, {
+      label: 'Stop PLC bridge',
+      url: `${this.base()}/shutdown`,
+      events: { ok: 'BRIDGE_STOPPED', fail: 'BRIDGE_STOP_FAILED' },
+      coalesce: false,
+    });
+  }
+
   removeRegister(key: string) {
     this.editSeq++;
     const { [key]: _gone, ...rest } = this.state.registers;

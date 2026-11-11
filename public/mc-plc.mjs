@@ -11,6 +11,8 @@
  * command and needs nothing else — no repo, no npm install, no server:
  *
  *   node mc-plc.mjs                     then open the PLC workspace; the first PLC is localhost:8200
+ *   node mc-plc.mjs --install           once: lets the workspace's Start button launch it (Windows, Linux)
+ *   node mc-plc.mjs --uninstall         undo --install
  *   node mc-plc.mjs --check             self-check of the frame codec
  *   MC_PORTS=8200-8299 HTTP_PORT=8201 PUBLIC_HOST=plc.example.com node mc-plc.mjs
  *
@@ -24,6 +26,11 @@
 import net from 'node:net';
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const [PORT_MIN, PORT_MAX] = (process.env.MC_PORTS || '8200-8299').split('-').map(Number);
 const HTTP_PORT = Number(process.env.HTTP_PORT || 8201);
@@ -35,6 +42,13 @@ const IDLE_MS = Number(process.env.SESSION_IDLE_MIN || 30) * 60_000;
 const LOG_MAX = 500;
 const CELLS_MAX = 4096; // per session, so one client sweeping D0-D9999 cannot eat the server
 const BODY_MAX = 64 * 1024;
+
+/** Started by the Start button (stechoq-plc://) rather than from a terminal. */
+const LAUNCHED = process.argv.includes('--launched');
+const SCHEME = 'stechoq-plc';
+/** A launched bridge has no window to close, so it leaves once no workspace has called for this long. */
+const AUTO_EXIT_MS = 10 * 60_000;
+let lastHttp = Date.now();
 
 // Word devices only. W is numbered in hex on a real PLC, D and R in decimal.
 // ponytail: bit devices (M, X, Y) and ZR are not served; add a row here and a
@@ -294,6 +308,7 @@ function view(s, since) {
 //   GET  /sessions/:id/state?since=N               -> memory, clients, new log lines
 //   POST /sessions/:id/registers   { D11: 3 }      -> set registers
 //   POST /sessions/:id/mode        { mode }        -> online | silent | offline
+//   POST /shutdown                                 -> the Stop button: the bridge exits
 
 const httpServer = http.createServer((req, res) => {
   const headers = {
@@ -310,8 +325,13 @@ const httpServer = http.createServer((req, res) => {
     res.end(body === undefined ? '' : JSON.stringify(body));
   };
   if (req.method === 'OPTIONS') return send(204);
+  lastHttp = Date.now();
 
   const url = new URL(req.url, 'http://x');
+  if (req.method === 'POST' && url.pathname === '/shutdown') {
+    send(200, { ok: true });
+    return shutdown('stopped from the workspace');
+  }
   const [, root, id, action] = url.pathname.split('/');
   if (root !== 'sessions') return send(404, { error: 'not found' });
 
@@ -414,12 +434,159 @@ function check() {
   console.log('mc-plc check passed');
 }
 
-if (process.argv.includes('--check')) {
-  check();
-} else {
+// --- lifecycle ---------------------------------------------------------------
+
+function shutdown(why) {
+  console.log(`bridge stopping: ${why}`);
+  for (const sess of [...sessions.values()]) closeSession(sess);
+  httpServer.close();
+  // Let the answer to /shutdown leave before the process does.
+  setTimeout(() => process.exit(0), 200);
+}
+
+const dataHome = () => process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
+
+/**
+ * What `xdg-mime default` does, without needing xdg-utils (not every desktop
+ * ships it): one line in mimeapps.list, which GNOME, KDE and xdg-open all read.
+ * Only our own line is touched; the rest of the user's file stays as it was.
+ */
+function setLinuxHandler(on) {
+  const cfg = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'mimeapps.list');
+  const mime = `x-scheme-handler/${SCHEME}`;
+  let text = '';
+  try {
+    text = fs.readFileSync(cfg, 'utf8');
+  } catch {
+    /* no file yet */
+  }
+  const lines = text.split('\n').filter((l) => !l.startsWith(`${mime}=`));
+  if (on) {
+    const at = lines.findIndex((l) => l.trim() === '[Default Applications]');
+    if (at === -1) lines.push('[Default Applications]', `${mime}=${SCHEME}.desktop`);
+    else lines.splice(at + 1, 0, `${mime}=${SCHEME}.desktop`);
+  }
+  fs.mkdirSync(path.dirname(cfg), { recursive: true });
+  fs.writeFileSync(cfg, lines.join('\n'));
+}
+
+/** Where --install keeps its copy; the protocol handler points here. */
+function installDir() {
+  return process.platform === 'win32'
+    ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), SCHEME)
+    : path.join(dataHome(), SCHEME);
+}
+
+/**
+ * Registers stechoq-plc:// so a link on the workspace can start this bridge.
+ * The link carries nothing into the process — any page could fire it, so the
+ * handler starts the bridge and takes no arguments from the URL.
+ */
+function install() {
+  const dir = installDir();
+  const file = path.join(dir, 'mc-plc.mjs');
+  // Absolute node path: a launch from the browser does not get the terminal's
+  // PATH, so `node` alone fails for nvm and similar installs.
+  const node = process.execPath;
+  fs.mkdirSync(dir, { recursive: true });
+  const self = fileURLToPath(import.meta.url);
+  if (path.resolve(self) !== path.resolve(file)) fs.copyFileSync(self, file);
+
+  if (process.platform === 'win32') {
+    // wscript runs node with a hidden window; node.exe alone would open a console.
+    const vbs = path.join(dir, 'launch.vbs');
+    const q = (v) => `""${v}""`; // a quote inside a VBScript string is doubled
+    fs.writeFileSync(vbs, `CreateObject("WScript.Shell").Run "${q(node)} ${q(file)} --launched", 0, False\r\n`);
+    // A .reg file instead of `reg add`: no command-line quoting to get wrong.
+    const esc = (v) => v.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const key = `HKEY_CURRENT_USER\\Software\\Classes\\${SCHEME}`;
+    const reg = [
+      'Windows Registry Editor Version 5.00',
+      '',
+      `[${key}]`,
+      '@="URL:Stechoq PLC bridge"',
+      '"URL Protocol"=""',
+      '',
+      `[${key}\\shell\\open\\command]`,
+      `@="${esc(`wscript.exe "${vbs}"`)}"`,
+      '',
+    ].join('\r\n');
+    const regFile = path.join(dir, 'protocol.reg');
+    fs.writeFileSync(regFile, Buffer.from('﻿' + reg, 'utf16le'));
+    execFileSync('reg', ['import', regFile], { stdio: 'ignore' });
+  } else if (process.platform === 'linux') {
+    const apps = path.join(dataHome(), 'applications');
+    fs.mkdirSync(apps, { recursive: true });
+    fs.writeFileSync(
+      path.join(apps, `${SCHEME}.desktop`),
+      [
+        '[Desktop Entry]',
+        'Type=Application',
+        'Name=Stechoq PLC bridge',
+        `Exec="${node}" "${file}" --launched`,
+        'Terminal=false',
+        'NoDisplay=true',
+        `MimeType=x-scheme-handler/${SCHEME};`,
+        '',
+      ].join('\n'),
+    );
+    setLinuxHandler(true);
+    try {
+      execFileSync('update-desktop-database', [apps], { stdio: 'ignore' });
+    } catch {
+      /* optional on most desktops */
+    }
+  } else {
+    console.log('One-click start is set up for Windows and Linux only. Run `node mc-plc.mjs` instead.');
+    process.exit(1);
+  }
+  console.log(`Installed in ${dir}`);
+  console.log('Done. Go back to the PLC workspace and press Start PLC — no terminal needed from now on.');
+  console.log('To update later, run this same command again. To remove: node mc-plc.mjs --uninstall');
+}
+
+function uninstall() {
+  if (process.platform === 'win32') {
+    try {
+      execFileSync('reg', ['delete', `HKCU\\Software\\Classes\\${SCHEME}`, '/f'], { stdio: 'ignore' });
+    } catch {
+      /* not registered */
+    }
+  } else if (process.platform === 'linux') {
+    fs.rmSync(path.join(dataHome(), 'applications', `${SCHEME}.desktop`), { force: true });
+    setLinuxHandler(false);
+  }
+  fs.rmSync(installDir(), { recursive: true, force: true });
+  console.log('Uninstalled: the Start button no longer launches the PLC bridge.');
+}
+
+function serve() {
+  // No window to print to when launched: keep the output beside the installed copy.
+  const log = LAUNCHED ? path.join(path.dirname(fileURLToPath(import.meta.url)), 'mc-plc.log') : null;
+  if (log) {
+    console.log = console.error = (...a) => fs.appendFileSync(log, `${new Date().toISOString()} ${a.join(' ')}\n`);
+    setInterval(() => {
+      if (Date.now() - lastHttp > AUTO_EXIT_MS) shutdown('no workspace open for 10 minutes');
+    }, 30_000).unref();
+  }
+  httpServer.on('error', (err) => {
+    if (err.code !== 'EADDRINUSE') throw err;
+    // Start pressed twice, or a terminal copy is already up: that one serves.
+    console.log(`Port ${HTTP_PORT} is in use — the PLC bridge is probably already running.`);
+    process.exit(LAUNCHED ? 0 : 1);
+  });
   httpServer.listen(HTTP_PORT, () => {
+    // Only the instance that got the port starts a fresh log; a second Start
+    // that exits must not wipe the running one's.
+    if (log) fs.writeFileSync(log, '');
     console.log(`PLC bridge ready. Open the PLC workspace in your browser — it connects by itself.`);
     console.log(`MC 3E   one PLC per browser tab, ports ${PORT_MIN}-${PORT_MAX}${PUBLIC_HOST ? ` on ${PUBLIC_HOST}` : ''} (the first is usually ${PORT_MIN})`);
-    console.log(`HTTP    http://localhost:${HTTP_PORT}  (the workspace talks to this; leave this window open)`);
+    console.log(`HTTP    http://localhost:${HTTP_PORT}  (the workspace talks to this; ${LAUNCHED ? 'Stop PLC ends it' : 'leave this window open'})`);
   });
 }
+
+const arg = process.argv.slice(2);
+if (arg.includes('--check')) check();
+else if (arg.includes('--install')) install();
+else if (arg.includes('--uninstall')) uninstall();
+else serve();

@@ -76,6 +76,17 @@ on Node 14+. CMD can share the Linux line because `curl` ships with Windows 10+;
 repo, no install. The workspace polls `http://localhost:8201` and connects by itself the moment the
 bridge is up. Chrome may ask once to allow the site to reach the local network.
 
+**One-click Start / Stop.** A page cannot start a program, but it can open a link the OS hands to a
+registered one. Running the same command with `--install` once (Windows, Linux) copies the bridge
+to a fixed folder and registers `stechoq-plc://`: on Windows in `HKCU\Software\Classes` through a
+hidden `wscript` launcher, on Linux as a `.desktop` file plus one line in `~/.config/mimeapps.list`
+(what `xdg-mime` would write; not every desktop ships xdg-utils). From then on **Start PLC** in the
+workspace launches it in the background with no window, and **Stop PLC** shuts it down over HTTP. The
+link passes nothing into the process — any page could fire it. A launched bridge leaves on its own
+after 10 minutes with no workspace calling, a second Start exits because the port is taken, and its
+output goes to `mc-plc.log` beside the installed copy. Re-run the install command to update;
+`node mc-plc.mjs --uninstall` removes it all. macOS is not covered: use the command without `--install`.
+
 The bridge answers **MC Protocol 3E binary** batch word reads (`0401`) and writes (`1401`) for D, R
 and W, with Q and iQ-R sub-commands, exactly as the CPU would. Each browser tab gets its own PLC on
 its own port — the first is `localhost:8200` — and keeps it across reloads (`localStorage`). If the
