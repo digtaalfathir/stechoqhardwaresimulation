@@ -1,4 +1,5 @@
 import type { ActionDef, ActionState, ConfigField, SimulatorMeta } from '../core/types';
+import { randomEpc } from '../core/wire';
 import { BASE_URLS, RFID_EVENTS, TagReader, sample, shuffle, type TagReaderState } from './tag-reader';
 
 /** Fixed by the device — the gate always identifies itself as this reader. */
@@ -25,11 +26,53 @@ function rereadCount(inField: number): number {
   return Math.floor(Math.random() ** 2 * (inField + 1));
 }
 
+/** One report the gate put on the wire, for the sweep timeline. */
+export interface GateSweep {
+  pass: number;
+  n: number;
+  at: string;
+  /** First time this pass. */
+  fresh: string[];
+  /** Already reported this pass, still in the field. */
+  again: string[];
+  /** null while the request is in flight. */
+  ok: boolean | null;
+  status: number;
+  durationMs: number;
+  covered: number;
+  total: number;
+}
+
+/** A forklift carrying one load through the gate. Times are epoch ms. */
+export interface GatePass {
+  n: number;
+  epcs: string[];
+  startedAt: number;
+  /** The load reaches the antennas: first report. */
+  enterAt: number;
+  /** Last report; the load is through. */
+  leaveAt: number;
+  /** The forklift is out of sight. */
+  endAt: number;
+  sweepsPlanned: number;
+}
+
 interface ReaderState extends TagReaderState {
   sweep: number;
   covered: number;
   total: number;
+  pass: GatePass | null;
+  passes: number;
+  /** Tags of the current pass already reported. */
+  reported: string[];
+  /** The last report's tags: what the antennas see right now. */
+  readNow: string[];
+  sweeps: GateSweep[];
 }
+
+/** One forklift load; anything up to this many RR is a single pass. */
+export const LOAD_SIZE = 18;
+const SWEEPS_KEPT = 12;
 
 const DEFAULT_TAGS = [
   'E280689400004025A987A05A',
@@ -42,16 +85,26 @@ const DEFAULT_TAGS = [
   'E280689400005029D1B7740E',
   'E28068940000402663B08C52',
   'E2806894000050317A2C43D8',
+  'E280689400004025A987A1F3',
+  'E28068940000502B56E4C02A',
+  'E28068940000402663B08F64',
+  'E2806894000050317A2C45B7',
+  'E28068940000402663B09380',
+  'E280689400005029D1B77591',
+  'E28068940000402663B08DE5',
+  'E2806894000050317A2C4626',
 ].join('\n');
 
 /**
- * Fixed RFID gate reader.
+ * Fixed RFID gate: an 8-antenna portal at the warehouse door, reporting as one
+ * reader on one antenna.
  *
- * Unlike the handheld, a gate does not report a sweep as one complete list: it
- * publishes whatever its antennas picked up in the last interval. A tag may
- * appear on the second sweep instead of the first, and a tag still inside the
- * field is reported again. Everything in the list is read within a few sweeps —
- * which is exactly the timing and duplication your consumer has to tolerate.
+ * A forklift drives a stack of RR through it. The gate does not report the
+ * stack as one complete list: every interval it publishes whatever its
+ * antennas caught in that window, so a tag may show up on the second report
+ * instead of the first, and a tag still in the field is reported again. The
+ * whole load is reported within a few reports of the forklift passing — which
+ * is exactly the timing and duplication your consumer has to tolerate.
  */
 export class RfidReaderSimulator extends TagReader<ReaderState> {
   readonly meta: SimulatorMeta = {
@@ -59,9 +112,9 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
     name: 'RFID Reader',
     category: 'Identification',
     icon: 'antenna',
-    tagline: 'Fixed gate reader that publishes partial, overlapping tag batches on an interval.',
+    tagline: 'Warehouse gate with 8 antennas — a forklift drives a stack of RR through, the gate reports what it reads.',
     description:
-      'Simulates a fixed RFID gate: instead of one complete list per trigger, each interval publishes only what the antennas caught in that window. Tags arrive spread over several sweeps and repeat while they are still in the field, so you can prove your consumer deduplicates and waits for the full set. Requests are really sent to the endpoint you configure.',
+      'Simulates a fixed RFID gate at the warehouse door: an 8-antenna portal that a forklift drives a stack of RR through. Instead of one complete list, each interval publishes only what the antennas caught in that window, so tags arrive spread over several reports and repeat while still in the field — prove your consumer deduplicates and waits for the full set. Requests are really sent to the endpoint you configure.',
     protocols: ['REST'],
   };
 
@@ -93,10 +146,17 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
       mono: true,
       hint: 'Fixed by the device',
     },
-    { key: 'antenna', label: 'Antenna', type: 'select', default: '1', options: ANTENNAS },
+    {
+      key: 'antenna',
+      label: 'Antenna',
+      type: 'select',
+      default: '1',
+      options: ANTENNAS,
+      hint: 'The gate has 8, but reports as one',
+    },
     {
       key: 'interval',
-      label: 'Scan Interval',
+      label: 'Report Interval',
       type: 'number',
       default: 7000,
       min: 500,
@@ -108,39 +168,46 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
 
   readonly actions: ActionDef[] = [
     {
-      id: 'start-scan',
-      label: 'Start Scan',
-      activeLabel: 'Scanning…',
+      id: 'pass',
+      label: 'Drive Forklift Through',
+      activeLabel: 'Passing…',
       tone: 'primary',
-      hint: 'Publish what the gate sees, every interval',
+      hint: 'The loaded forklift drives through the gate',
     },
-    { id: 'stop-scan', label: 'Stop Scan', hint: 'Halt the gate' },
+    { id: 'stop-pass', label: 'Stop', hint: 'Abort the pass' },
     { id: 'reset', label: 'Reset', tone: 'danger', hint: 'Back to a freshly connected reader' },
   ];
 
   actionState(id: string): ActionState {
-    const { scanning } = this.state;
+    const busy = this.state.pass !== null;
     switch (id) {
-      case 'start-scan':
-        return { active: scanning, disabled: scanning };
-      case 'stop-scan':
-        return { disabled: !scanning };
+      case 'pass':
+        return { active: busy, disabled: busy };
+      case 'stop-pass':
+        return { disabled: !busy };
       default:
         return {};
     }
   }
 
   private loop: ReturnType<typeof setInterval> | null = null;
-  /** Tags of the current run that have not been reported yet. */
+  /** Tags of the current pass that have not been reported yet. */
   private pending: string[] = [];
-  private reported: string[] = [];
-  private sweepsPlanned = SWEEPS_TO_FULL_READ.min;
 
   protected initialState(): ReaderState {
     this.loop = null;
     this.pending = [];
-    this.reported = [];
-    return { ...this.baseState(DEFAULT_TAGS), sweep: 0, covered: 0, total: 0 };
+    return {
+      ...this.baseState(DEFAULT_TAGS),
+      sweep: 0,
+      covered: 0,
+      total: 0,
+      pass: null,
+      passes: 0,
+      reported: [],
+      readNow: [],
+      sweeps: [],
+    };
   }
 
   protected identity() {
@@ -148,8 +215,8 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
   }
 
   protected onAction(id: string) {
-    if (id === 'start-scan') this.startScan();
-    if (id === 'stop-scan') this.stopScan();
+    if (id === 'pass') this.startPass();
+    if (id === 'stop-pass') this.stopPass();
   }
 
   coverage() {
@@ -166,116 +233,170 @@ export class RfidReaderSimulator extends TagReader<ReaderState> {
     };
   }
 
-  private startScan() {
-    if (this.state.scanning) return;
-    const { min, max } = SWEEPS_TO_FULL_READ;
-    this.pending = shuffle(this.tags());
-    this.reported = [];
-    this.sweepsPlanned = min + Math.floor(Math.random() * (max - min + 1));
-
-    this.status = 'SIMULATING';
-    this.setState({ scanning: true, sweep: 0, covered: 0, total: this.tags().length });
-    this.emit(
-      'SCAN_STARTED',
-      {
-        reader_id: READER_ID,
-        antenna: this.cfg('antenna'),
-        interval_ms: this.num('interval'),
-        tags_in_field: this.tags().length,
-      },
-      { tone: 'active', summary: `Gate started — ${this.tags().length} tag(s) in the field` },
-    );
-    this.sweep();
-    this.loop = this.every(Math.max(500, this.num('interval')), () => this.sweep());
+  /** Fills the load with fresh RR, as many as one forklift carries. */
+  randomLoad(count = LOAD_SIZE) {
+    this.setTagsText(Array.from({ length: count }, () => randomEpc()).join('\n'));
   }
 
-  private stopScan() {
-    if (!this.state.scanning) return;
-    this.stop(this.loop);
+  /** Approach and exit take a moment either side of the reports. */
+  private lead(interval: number): number {
+    return Math.min(2500, Math.max(300, interval / 2));
+  }
+
+  /**
+   * The forklift drives the current load through. The load is fixed when it
+   * sets off: editing the list now loads the next forklift, not this one.
+   */
+  private startPass() {
+    if (this.state.pass) return;
+    const epcs = this.tags();
+    if (epcs.length === 0) {
+      this.emit('SCAN_NO_TAG', { reader_id: READER_ID, antenna: this.cfg('antenna') }, {
+        tone: 'warn',
+        summary: 'The forklift is empty — add RR to the load first',
+      });
+      return;
+    }
+    const { min, max } = SWEEPS_TO_FULL_READ;
+    const planned = min + Math.floor(Math.random() * (max - min + 1));
+    const interval = Math.max(500, this.num('interval'));
+    const lead = this.lead(interval);
+    const now = Date.now();
+    const pass: GatePass = {
+      n: this.state.passes + 1,
+      epcs,
+      startedAt: now,
+      enterAt: now + lead,
+      leaveAt: now + lead + (planned - 1) * interval,
+      endAt: now + lead + (planned - 1) * interval + lead,
+      sweepsPlanned: planned,
+    };
+    this.pending = shuffle(epcs);
+
+    this.status = 'SIMULATING';
+    this.setState({ scanning: true, pass, sweep: 0, covered: 0, total: epcs.length, reported: [], readNow: [], sweeps: [] });
+    this.emit(
+      'FORKLIFT_ENTERING',
+      { pass: pass.n, rr: epcs.length, reader_id: READER_ID, interval_ms: interval },
+      { tone: 'active', summary: `Pass #${pass.n} — forklift with ${epcs.length} RR heading for the gate` },
+    );
+    this.after(lead, () => {
+      void this.sweep();
+      if (pass.sweepsPlanned > 1) this.loop = this.every(interval, () => void this.sweep());
+    });
+  }
+
+  private stopPass() {
+    const pass = this.state.pass;
+    if (!pass) return;
+    this.clearTimers();
     this.loop = null;
     this.status = 'CONNECTED';
-    this.setState({ scanning: false });
+    this.setState({ scanning: false, pass: null, readNow: [] });
+    this.emit('PASS_STOPPED', { pass: pass.n, covered: this.state.covered, total: pass.epcs.length }, {
+      tone: 'warn',
+      summary: `Pass #${pass.n} stopped at ${this.state.covered}/${pass.epcs.length}`,
+    });
+  }
+
+  private finishPass() {
+    const pass = this.state.pass;
+    if (!pass) return;
+    this.status = 'CONNECTED';
+    this.setState({ scanning: false, pass: null, passes: pass.n, readNow: [] });
     this.emit(
-      'SCAN_STOPPED',
-      { reader_id: READER_ID, payloads_sent: this.transmission.sent, covered: this.state.covered },
-      { tone: 'neutral', summary: 'Gate stopped' },
+      'FORKLIFT_LEFT',
+      { pass: pass.n, reported: this.state.covered, total: pass.epcs.length, reports: this.state.sweep },
+      { tone: 'ok', summary: `Pass #${pass.n} done — ${this.state.covered}/${pass.epcs.length} RR reported in ${this.state.sweep} report(s)` },
     );
   }
 
   /** One interval of gate output: some new tags, some still-in-field re-reads. */
   private async sweep() {
-    const all = this.tags();
-    if (all.length === 0) {
-      this.emit('SCAN_NO_TAG', { reader_id: READER_ID, antenna: this.cfg('antenna') }, {
-        tone: 'warn',
-        summary: 'Tag list is empty — nothing in the field',
-      });
-      return;
-    }
-    // Consuming the plan before knowing the request goes out would mark tags as
-    // reported that were never sent.
-
-    this.syncWithTagList(all);
+    const pass = this.state.pass;
+    if (!pass) return;
+    const all = pass.epcs;
     const sweep = this.state.sweep + 1;
-    const sweepsLeft = Math.max(1, this.sweepsPlanned - sweep + 1);
+    const sweepsLeft = Math.max(1, pass.sweepsPlanned - sweep + 1);
 
-    const fresh = this.pending.splice(0, this.freshCount(sweepsLeft));
-    this.reported.push(...fresh);
+    const fresh = this.pending.splice(0, this.freshCount(sweepsLeft, this.state.reported.length));
+    const reported = [...this.state.reported, ...fresh];
 
     // Whatever is still in the field can be seen again — usually a handful,
-    // occasionally most of it. That is what makes one sweep "3 new + 4 already
+    // occasionally most of it. That is what makes one report "3 new + 4 already
     // sent" and the next "1 + 0".
-    const stillInField = this.reported.filter((t) => !fresh.includes(t));
-    const rereads = sample(stillInField, rereadCount(stillInField.length));
-    let batch = shuffle([...fresh, ...rereads]);
-    // Everything is covered but the gate keeps looking: report re-reads only.
-    if (batch.length === 0) batch = sample(this.reported, 1 + Math.floor(Math.random() * 3));
+    const stillInField = this.state.reported;
+    const again = sample(stillInField, rereadCount(stillInField.length));
+    let batch = shuffle([...fresh, ...again]);
+    if (batch.length === 0) batch = sample(reported, 1 + Math.floor(Math.random() * 3));
 
-    this.setState({ sweep, covered: this.reported.length, total: all.length });
-    await this.dispatch(this.buildPayload(batch), {
+    const entry: GateSweep = {
+      pass: pass.n,
+      n: sweep,
+      at: new Date().toISOString(),
+      fresh,
+      again: batch.filter((t) => !fresh.includes(t)),
+      ok: null,
+      status: 0,
+      durationMs: 0,
+      covered: reported.length,
+      total: all.length,
+    };
+    this.setState({
+      sweep,
+      covered: reported.length,
+      total: all.length,
+      reported,
+      readNow: batch,
+      sweeps: [entry, ...this.state.sweeps].slice(0, SWEEPS_KEPT),
+    });
+
+    // The last planned report: stop the clock, then let the forklift drive off.
+    if (sweep >= pass.sweepsPlanned) {
+      this.stop(this.loop);
+      this.loop = null;
+      this.after(this.lead(Math.max(500, this.num('interval'))), () => this.finishPass());
+    }
+
+    const ok = await this.dispatch(this.buildPayload(batch), {
       label: `${batch.length} tag(s)`,
-      note: `${this.reported.length}/${all.length} covered`,
+      note: `${reported.length}/${all.length} covered`,
       url: this.url(),
       events: RFID_EVENTS,
+      coalesce: false,
+    });
+    const res = this.transmission.lastResponse;
+    this.setState({
+      sweeps: this.state.sweeps.map((s) =>
+        s === entry ? { ...s, ok, status: res?.status ?? 0, durationMs: res?.durationMs ?? 0 } : s,
+      ),
     });
 
     if (fresh.length > 0 && this.pending.length === 0) {
       this.emit(
         'TAG_LIST_COVERED',
-        { reader_id: READER_ID, tag_count: all.length, sweeps: sweep },
-        { tone: 'ok', summary: `All ${all.length} tag(s) reported after ${sweep} sweep(s)` },
+        { reader_id: READER_ID, tag_count: all.length, sweeps: sweep, pass: pass.n },
+        { tone: 'ok', summary: `All ${all.length} RR reported after ${sweep} report(s)` },
       );
     }
   }
 
   /**
-   * How many *unseen* tags this sweep picks up.
+   * How many *unseen* tags this report picks up.
    *
    * Anything from none to nearly all of them, so batch sizes and the new/old
-   * mix keep changing — but never the whole remainder while sweeps are still
-   * planned, and always the whole remainder on the last one, so the list is
-   * still fully reported inside the promised window.
+   * mix keep changing — but never the whole remainder while reports are still
+   * planned, and always the whole remainder on the last one, so the load is
+   * fully reported before the forklift leaves.
    */
-  private freshCount(sweepsLeft: number): number {
+  private freshCount(sweepsLeft: number, reportedSoFar: number): number {
     const pending = this.pending.length;
     if (pending === 0) return 0;
     if (sweepsLeft <= 1) return pending;
-    if (this.reported.length > 0 && Math.random() < QUIET_SWEEP_CHANCE) return 0;
-    // At least a fair share of what is left, at most double it: enough variety
-    // to look like a gate, never so much that one sweep swallows the list.
+    if (reportedSoFar > 0 && Math.random() < QUIET_SWEEP_CHANCE) return 0;
     const min = Math.ceil(pending / sweepsLeft);
     const cap = Math.max(min, Math.min(pending - 1, min * 2));
     return min + Math.floor(Math.random() * (cap - min + 1));
-  }
-
-  /** The list is editable mid-run, so the plan follows it. */
-  private syncWithTagList(all: string[]) {
-    this.pending = this.pending.filter((t) => all.includes(t));
-    this.reported = this.reported.filter((t) => all.includes(t));
-    const known = new Set([...this.pending, ...this.reported]);
-    for (const tag of all) {
-      if (!known.has(tag)) this.pending.push(tag);
-    }
   }
 
   samplePayload() {

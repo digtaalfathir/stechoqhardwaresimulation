@@ -11,6 +11,8 @@ import { EventStream, PayloadInspector } from './event-stream';
 import { DevicePanel } from './device-panels';
 import { HandheldWorkspace } from './handheld/handheld-device';
 import { RfidHandheldSimulator } from '../simulators/rfid/rfid-handheld';
+import { RfidReaderSimulator } from '../simulators/rfid/rfid-reader';
+import { GateWorkspace } from './gate/gate-workspace';
 
 const STATUS_TONE: Record<DeviceStatus, Tone> = {
   OFFLINE: 'neutral',
@@ -86,6 +88,9 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
         // The handheld is driven from the device itself: its settings, controls
         // and results live on the screen, as on the real APK.
         <HandheldWorkspace sim={sim} />
+      ) : sim instanceof RfidReaderSimulator ? (
+        // The gate is a scene too: a portal, a forklift and its load.
+        <GateWorkspace sim={sim} />
       ) : (
       <>
       <ConfigPanel key={sim.meta.id} sim={sim} />
@@ -198,7 +203,7 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
 }
 
 /** Declarative config form — rendered from the simulator's field schema. */
-function ConfigPanel({ sim }: { sim: AnySimulator }) {
+export function ConfigPanel({ sim }: { sim: AnySimulator }) {
   const t = useT();
   const [form, setForm] = useState<Config>(() => ({ ...sim.config }));
   const dirty = JSON.stringify(form) !== JSON.stringify(sim.config);

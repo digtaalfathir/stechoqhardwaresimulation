@@ -5,7 +5,6 @@ import type { TransportResponse } from '../simulators/core/types';
 import { Icon } from './icon';
 import { CopyButton } from './copy-button';
 import { NutrunnerSimulator } from '../simulators/nutrunner/nutrunner';
-import { TagReader } from '../simulators/rfid/tag-reader';
 import { DigitalIoSimulator, type ChannelKind } from '../simulators/digital-io/digital-io';
 import { McPlcSimulator } from '../simulators/plc/mc-plc';
 
@@ -17,27 +16,10 @@ import { McPlcSimulator } from '../simulators/plc/mc-plc';
  * view — a tightening curve, a channel grid. Devices without one render nothing.
  */
 export function DevicePanel({ sim }: { sim: AnySimulator }) {
-  if (sim instanceof TagReader) return <RfidTagPanel sim={sim} />;
   if (sim instanceof NutrunnerSimulator) return <NutrunnerPanel sim={sim} />;
   if (sim instanceof DigitalIoSimulator) return <DigitalIoPanel sim={sim} />;
   if (sim instanceof McPlcSimulator) return <PlcRegisterPanel sim={sim} />;
   return null;
-}
-
-// --- rfid gate reader ------------------------------------------------------
-
-/**
- * The gate reader's tag list lives here rather than in the configuration form:
- * edits take effect on the next sweep with no Apply step. (The handheld has its
- * own workspace — a device and a bench of tags — in components/handheld.)
- */
-function RfidTagPanel({ sim }: { sim: TagReader }) {
-  return (
-    <>
-      <SendResult sim={sim} />
-      <TagList sim={sim} />
-    </>
-  );
 }
 
 /** Localised version of the transport's own explanation, with English fallback. */
@@ -131,52 +113,6 @@ export function SendResult({ sim }: { sim: AnySimulator }) {
         {t(
           'send.note',
           'This request is really sent from your browser. A failure here is a real one: the endpoint refused it, is unreachable, or does not allow this page (CORS).',
-        )}
-      </p>
-    </section>
-  );
-}
-
-function TagList({ sim }: { sim: TagReader }) {
-  const t = useT();
-  const tags = sim.tags();
-  const coverage = sim.coverage();
-  return (
-    <section className="panel span-2">
-      <div className="panel-head">
-        <span className="panel-title">{t('rfid.title', 'Tag List')}</span>
-        <span className="chip">
-          {tags.length} {t('unit.tags', 'tags')}
-        </span>
-        {coverage && coverage.total > 0 && (
-          <span className={`chip${coverage.covered >= coverage.total ? ' t-ok' : ''}`}>
-            {coverage.covered} / {coverage.total} {t('rfid.covered', 'reported')}
-          </span>
-        )}
-        <div className="spacer" />
-        <span className="chip t-ok">{t('rfid.live', 'applies instantly')}</span>
-        <button type="button" className="btn btn-sm" onClick={() => sim.addRandomTag()}>
-          <Icon name="bolt" size={13} />
-          {t('rfid.generate', 'Generate Random Tag')}
-        </button>
-      </div>
-      <div className="panel-body">
-        <div className="field">
-          <label htmlFor="rfid-tags">{t('rfid.label', 'Scanned tags — one EPC per line')}</label>
-          <textarea
-            id="rfid-tags"
-            className="mono-input tag-input"
-            spellCheck={false}
-            value={sim.state.tagsText}
-            placeholder={t('rfid.placeholder', 'E280689400004025A987A05A')}
-            onChange={(e) => sim.setTagsText(e.target.value)}
-          />
-        </div>
-      </div>
-      <p className="panel-note">
-        {t(
-          'rfid.note.gate',
-          'The gate reports only what its antennas caught in each interval, so tags arrive spread over several sweeps and repeat while still in the field. Edits apply to the next sweep — no Apply Configuration needed.',
         )}
       </p>
     </section>

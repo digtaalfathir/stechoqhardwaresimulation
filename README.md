@@ -57,6 +57,16 @@ device's own Pengaturan screen. Barcode mode, the floating bubble, the update ba
 not simulated. The device is in [src/components/handheld/](src/components/handheld/); the behaviour
 in [src/simulators/rfid/rfid-handheld.ts](src/simulators/rfid/rfid-handheld.ts).
 
+The gate is an **8-antenna portal at the warehouse door** (three per side, two overhead), drawn in
+isometric, that a **forklift drives a stack of RR through** — one pass per load, up to 18 RR, all
+stacked on the forks. The gate reports as one reader on one antenna. While the load is in the field it
+posts **every interval only what the antennas caught in that window**: tags arrive spread over 2–4
+reports and repeat while still in the field, and the whole load is reported before the forklift drives
+off. The report timeline shows each POST as new vs. repeated tags — the deduplication your consumer
+has to do. The load is an EPC list, editable or randomised; editing it mid-pass loads the next
+forklift. The scene is in [src/components/gate/](src/components/gate/), the behaviour in
+[src/simulators/rfid/rfid-reader.ts](src/simulators/rfid/rfid-reader.ts).
+
 The handheld fills its **RR Type** and **Factory** dropdowns from the host itself — read once when the
 workspace opens and again whenever the base URL changes, since each host holds different master data.
 A scan sends the factory's `code`; a replacement sends its `id`, which is a different number only the
@@ -128,7 +138,8 @@ src/
 │   ├── registry.ts      The one place devices are registered
 │   └── engine.check.ts  npm run check
 ├── components/          Workspace, event stream, inspector, device panels, settings menu
-│   └── handheld/        The MC33 device, its tag bench and the WMS RFID Suite app
+│   ├── handheld/        The MC33 device, its tag bench and the WMS RFID Suite app
+│   └── gate/            The isometric 8-antenna gate and the forklift going through
 ├── pages/               Home, explorer, workspace, docs, about
 ├── lib/                 Hash router, React binding, settings store, i18n
 └── styles.css

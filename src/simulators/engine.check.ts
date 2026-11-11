@@ -7,7 +7,7 @@
 import { simulators, getSimulator, plannedSimulators, CATEGORIES } from './registry';
 import { ANTENNA, BENCH, RfidHandheldSimulator, quality } from './rfid/rfid-handheld';
 import type { MasterFetch } from './rfid/master-data';
-import { RfidReaderSimulator } from './rfid/rfid-reader';
+import { LOAD_SIZE, RfidReaderSimulator } from './rfid/rfid-reader';
 import { NutrunnerSimulator } from './nutrunner/nutrunner';
 import { DigitalIoSimulator } from './digital-io/digital-io';
 import { McPlcSimulator, parseRegister } from './plc/mc-plc';
@@ -565,7 +565,7 @@ async function main() {
   assert(!repl.state.replacementOpen, 'no form appears outside replacement mode');
   repl.clearTimers();
 
-  // --- rfid gate reader: partial, overlapping batches ---
+  // --- rfid gate: a forklift drives a stack of RR through ---
   const gate = new RfidReaderSimulator();
   const batches: string[][] = [];
   gate.sender = async (_url, body) => {
@@ -573,80 +573,90 @@ async function main() {
     return accepted;
   };
   assert(gate.configFields.find((f) => f.key === 'interval')?.default === 7000, 'the gate defaults to a 7s interval');
-  assert(!gate.actions.some((a) => a.id === 'scan-once'), 'the gate has no single-shot action');
   assert(
-    gate.actions.map((a) => a.id).join(',') === 'start-scan,stop-scan,reset',
-    'the gate offers start, stop and reset only',
+    gate.actions.map((a) => a.id).join(',') === 'pass,stop-pass,reset',
+    'the gate offers a pass, stop and reset only',
   );
+  assert(gate.tags().length === LOAD_SIZE, 'the default load is one full forklift');
 
-  const gateTags = Array.from({ length: 18 }, (_, i) => `E2806894000040000000${String(i).padStart(4, '0')}`);
+  const gateTags = Array.from({ length: LOAD_SIZE }, (_, i) => `E2806894000040000000${String(i).padStart(4, '0')}`);
   gate.applyConfig({ baseUrl: 'https://wms.suite.stechoq-j.com', antenna: '4', interval: 500 });
   gate.setTagsText(gateTags.join('\n'));
-  gate.run('start-scan');
-  await sleep(60);
+  assert(batches.length === 0, 'an idle gate reports nothing: nothing is in the field');
 
-  assert(batches.length === 1, 'starting the gate publishes immediately');
+  gate.run('pass');
+  const pass = gate.state.pass!;
+  assert(pass && gate.state.scanning && gate.status === 'SIMULATING', 'driving through starts a pass');
+  assert(pass.sweepsPlanned >= 2 && pass.sweepsPlanned <= 4, `a pass plans 2-4 reports (got ${pass.sweepsPlanned})`);
+  assert(pass.startedAt < pass.enterAt && pass.enterAt <= pass.leaveAt && pass.leaveAt < pass.endAt, 'in, through, out — in order');
+  assert(gate.events[0].name === 'FORKLIFT_ENTERING', 'the forklift is announced');
+  assert(gate.actionState('pass').disabled === true, 'a second forklift cannot drive in mid-pass');
+  await sleep(100);
+  assert(batches.length === 0, 'nothing is reported before the load reaches the antennas');
+
+  // The load is fixed when the forklift sets off.
+  gate.setTagsText([...gateTags, 'E28068940000400000009999'].join('\n'));
+  await sleep(280);
+  assert(batches.length === 1, 'the first report goes out as the load enters the field');
   const first = batches[0];
-  assert(first.length > 0, 'the first report carries tags');
-  assert(first.length < gateTags.length, `the first report is partial (got ${first.length}/${gateTags.length})`);
+  assert(first.length > 0 && first.length < gateTags.length, `the first report is partial (got ${first.length}/${gateTags.length})`);
 
   const firstEvent = gate.events.find((e) => e.name === 'RFID_SENT')!;
   assert(
-    JSON.stringify(Object.keys(firstEvent.payload)) ===
-      JSON.stringify(['reader_id', 'antenna', 'idHex', 'timestamp']),
+    JSON.stringify(Object.keys(firstEvent.payload)) === JSON.stringify(['reader_id', 'antenna', 'idHex', 'timestamp']),
     'the gate payload carries exactly reader_id, antenna, idHex and timestamp',
   );
   assert(firstEvent.payload.reader_id === 'SIMULATOR-02', 'the gate identifies itself as SIMULATOR-02');
-  assert(firstEvent.payload.antenna === '4', 'the configured antenna reaches the payload');
-  assert(Array.isArray(firstEvent.payload.idHex), 'idHex is an array');
-  assert(firstEvent.payload.id_hex === undefined, 'the snake_case spelling is gone — the API expects idHex');
+  assert(firstEvent.payload.antenna === '4', 'the one configured antenna reaches the payload');
   assert(firstEvent.summary?.includes('covered'), 'the summary reports coverage progress');
+  assert(gate.state.sweeps[0].fresh.length === first.length, 'the timeline records the report');
 
-  // Everything must be reported within the planned handful of sweeps.
-  await sleep(2100);
-  gate.run('stop-scan');
-  const gateSweeps = batches.length;
-  assert(gateSweeps >= 4, `the gate kept publishing on its interval (got ${gateSweeps} sweeps)`);
+  await sleep(pass.endAt - Date.now() + 150);
+  assert(gate.state.pass === null && !gate.state.scanning && gate.status === 'CONNECTED', 'the forklift drives off and the pass ends');
+  assert(gate.events.some((e) => e.name === 'FORKLIFT_LEFT'), 'the pass end is announced');
+  assert(batches.length === pass.sweepsPlanned, `one report per planned interval (${batches.length}/${pass.sweepsPlanned})`);
   const seen = new Set(batches.flat());
-  assert(seen.size === gateTags.length, `every tag was reported eventually (${seen.size}/${gateTags.length})`);
-  assert(gateTags.every((t) => seen.has(t)), 'the reported set is exactly the tag list');
-
-  const covered = gate.events.find((e) => e.name === 'TAG_LIST_COVERED');
-  assert(covered, 'the gate announces when the whole list has been reported');
-  assert(
-    Number(covered!.payload.sweeps) >= 2 && Number(covered!.payload.sweeps) <= 4,
-    `full coverage lands between the 2nd and 4th sweep (got ${covered!.payload.sweeps})`,
-  );
-
+  assert(seen.size === gateTags.length, `every RR was reported before the forklift left (${seen.size}/${gateTags.length})`);
+  assert(!seen.has('E28068940000400000009999'), 'a tag added mid-pass rides the next forklift, not this one');
+  assert(batches.every((b) => new Set(b).size === b.length), 'a single report never lists the same tag twice');
   const coveredAt = batches.findIndex((_, i) => new Set(batches.slice(0, i + 1).flat()).size === gateTags.length);
-  const repeats = batches.flat().length - seen.size;
-  assert(repeats > 0, 'tags are re-reported while still in the field');
+  assert(batches.slice(0, coveredAt).every((b) => b.length < gateTags.length), 'no report before the last dumps the whole load');
+  const covered = gate.events.find((e) => e.name === 'TAG_LIST_COVERED');
+  assert(covered && Number(covered.payload.sweeps) === pass.sweepsPlanned, 'full coverage lands on the last planned report');
+  const sweeps = gate.state.sweeps;
+  assert(sweeps.every((s) => s.ok === true && s.status === 201), 'each report keeps its response for the timeline');
   assert(
-    batches.every((b) => new Set(b).size === b.length),
-    'a single report never lists the same tag twice',
+    sweeps.every((s) => s.again.every((t) => !s.fresh.includes(t))),
+    'a report splits cleanly into new and repeated tags',
   );
-  assert(
-    batches.slice(0, coveredAt).every((b) => b.length < gateTags.length),
-    'no sweep before the last one dumps the entire list',
-  );
-  // The mix of new and already-seen tags has to move, or it is not a gate.
-  const mixes = batches.map((b, i) => {
-    const before = new Set(batches.slice(0, i).flat());
-    return `${b.filter((t) => !before.has(t)).length}+${b.filter((t) => before.has(t)).length}`;
-  });
-  assert(new Set(mixes).size > 1, `the new/old mix varies between sweeps (got ${mixes.join(' ')})`);
-  assert(
-    batches.slice(coveredAt + 1).every((b) => b.length > 0),
-    'the gate keeps publishing re-reads after the list is covered',
-  );
-  assert(gate.coverage()?.covered === gateTags.length, 'coverage is reported to the UI');
 
-  // The list stays editable mid-run.
-  gate.setTagsText([...gateTags, 'E28068940000400000009999'].join('\n'));
-  gate.run('start-scan');
-  await sleep(60);
-  gate.run('stop-scan');
-  assert(gate.coverage()?.total === gateTags.length + 1, 'a tag added mid-run joins the plan');
+  // Over several passes the new/old mix moves and tags are repeated, or it is not a gate.
+  gate.setTagsText(gateTags.join('\n'));
+  const mixes: string[] = [];
+  let repeats = 0;
+  for (let i = 0; i < 3; i++) {
+    gate.run('pass');
+    const p = gate.state.pass!;
+    await sleep(p.endAt - Date.now() + 120);
+    mixes.push(...gate.state.sweeps.map((s) => `${s.fresh.length}+${s.again.length}`));
+    repeats += gate.state.sweeps.reduce((n, s) => n + s.again.length, 0);
+  }
+  assert(gate.state.passes === 4, 'passes are counted');
+  assert(new Set(mixes).size > 1, `the new/old mix varies between reports (got ${mixes.join(' ')})`);
+  assert(repeats > 0, 'tags are re-reported while still in the field');
+
+  // Stop aborts the pass; an empty forklift goes nowhere.
+  gate.run('pass');
+  gate.run('stop-pass');
+  assert(gate.state.pass === null && gate.events[0].name === 'PASS_STOPPED', 'Stop aborts the pass');
+  const sentBeforeStop = batches.length;
+  await sleep(700);
+  assert(batches.length === sentBeforeStop, 'a stopped pass reports nothing more');
+  gate.setTagsText('');
+  gate.run('pass');
+  assert(gate.state.pass === null && gate.events[0].name === 'SCAN_NO_TAG', 'an empty forklift does not drive');
+  gate.randomLoad();
+  assert(gate.tags().length === LOAD_SIZE && gate.tags().every((t) => /^E2806894[0-9A-F]{16}$/.test(t)), 'a random load is 18 fresh EPCs');
   gate.clearTimers();
 
   // --- open protocol telegram format ---
@@ -887,8 +897,8 @@ async function main() {
   assert(probe.events.length === 0, 'the event log can be cleared');
 
   const spinner = new RfidReaderSimulator();
-  spinner.applyConfig({ interval: 200 });
-  spinner.run('start-scan');
+  spinner.applyConfig({ interval: 500 });
+  spinner.run('pass');
   spinner.clearTimers();
   const parked = spinner.transmission.sent;
   await sleep(450);
