@@ -126,6 +126,51 @@ function StatusBar({ sim }: { sim: McPlcSimulator }) {
 
 // --- device monitor ------------------------------------------------------------
 
+/**
+ * The value box keeps what you are typing while the client keeps reading:
+ * it shows the live value until focused, then a draft until Enter or blur
+ * commits it (Esc puts the live value back).
+ */
+function ValueInput({
+  shown,
+  label,
+  onCommit,
+  disabled,
+}: {
+  shown: string;
+  label: string;
+  onCommit: (text: string) => void;
+  disabled: boolean;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      value={draft ?? shown}
+      aria-label={label}
+      inputMode="numeric"
+      spellCheck={false}
+      disabled={disabled}
+      onFocus={(e) => {
+        setDraft(shown);
+        e.currentTarget.select();
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft !== null) onCommit(draft);
+        setDraft(null);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          const el = e.currentTarget;
+          setDraft(null);
+          requestAnimationFrame(() => el.blur());
+        }
+      }}
+    />
+  );
+}
+
 const hex = (v: number) => (v & 0xffff).toString(16).toUpperCase().padStart(4, '0');
 
 function DeviceMonitor({ sim }: { sim: McPlcSimulator }) {
@@ -222,16 +267,28 @@ function DeviceMonitor({ sim }: { sim: McPlcSimulator }) {
         </p>
       ) : (
         <div className="scroll-x">
+          {/* Fixed columns: the client reading every second must never move the value box. */}
           <table className="pl-table">
+            <colgroup>
+              <col style={{ width: 96 }} />
+              <col />
+              <col style={{ width: 176 }} />
+              <col style={{ width: 66 }} />
+              <col style={{ width: 170 }} />
+              <col style={{ width: 170 }} />
+              <col style={{ width: 36 }} />
+            </colgroup>
             <thead>
               <tr>
-                <th style={{ width: 92 }}>Device</th>
+                <th>Device</th>
                 <th>{t('plc.comment', 'Comment')}</th>
-                <th style={{ width: 196 }}>{t('plc.value', 'Value')} ({radix.toUpperCase()})</th>
-                <th style={{ width: 80 }}>{radix === 'dec' ? 'HEX' : 'DEC'}</th>
+                <th>
+                  {t('plc.value', 'Value')} ({radix.toUpperCase()})
+                </th>
+                <th>{radix === 'dec' ? 'HEX' : 'DEC'}</th>
                 <th>{t('plc.reads', 'Read by client')}</th>
                 <th>{t('plc.writes', 'Written by client')}</th>
-                <th style={{ width: 40 }} />
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -244,9 +301,14 @@ function DeviceMonitor({ sim }: { sim: McPlcSimulator }) {
                   const n = parse(text);
                   if (text.trim() !== '' && Number.isFinite(n) && n !== r.value) sim.setRegister(k, n);
                 };
+                const stamp = (n: number, at: string | null) =>
+                  n ? `${n}× · ${new Date(at!).toLocaleTimeString([], { hour12: false })}` : '—';
                 return (
                   <tr key={k} className={wrote ? 'write' : read ? 'read' : ''}>
-                    <td className="pl-dev">{k}</td>
+                    <td className="pl-dev">
+                      <i className="pl-led" aria-hidden="true" />
+                      {k}
+                    </td>
                     <td>
                       <input
                         className="pl-comment"
@@ -258,14 +320,7 @@ function DeviceMonitor({ sim }: { sim: McPlcSimulator }) {
                     </td>
                     <td>
                       <span className="pl-valbox">
-                        <input
-                          key={`${k}:${r.value}:${radix}`}
-                          defaultValue={shown}
-                          aria-label={`${k} value`}
-                          onBlur={(e) => commit(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                          disabled={st.bridge !== 'up'}
-                        />
+                        <ValueInput shown={shown} label={`${k} value`} onCommit={commit} disabled={st.bridge !== 'up'} />
                         <button type="button" aria-label={`${k} − 1`} onClick={() => sim.setRegister(k, r.value - 1)} disabled={st.bridge !== 'up'}>
                           −
                         </button>
@@ -276,12 +331,12 @@ function DeviceMonitor({ sim }: { sim: McPlcSimulator }) {
                     </td>
                     <td className="pl-dim">{radix === 'dec' ? hex(r.value) : r.value}</td>
                     <td className="pl-dim">
-                      {r.reads ? `${r.reads}× · ${new Date(r.lastRead!).toLocaleTimeString([], { hour12: false })}` : '—'}{' '}
-                      {read && <span className="pl-flag r">READ</span>}
+                      <span className="pl-stamp">{stamp(r.reads, r.lastRead)}</span>
+                      <span className={`pl-flag r${read ? ' on' : ''}`}>READ</span>
                     </td>
                     <td className="pl-dim">
-                      {r.writes ? `${r.writes}× · ${new Date(r.lastWrite!).toLocaleTimeString([], { hour12: false })}` : '—'}{' '}
-                      {wrote && <span className="pl-flag w">WRITE</span>}
+                      <span className="pl-stamp">{stamp(r.writes, r.lastWrite)}</span>
+                      <span className={`pl-flag w${wrote ? ' on' : ''}`}>WRITE</span>
                     </td>
                     <td>
                       <button type="button" className="pl-x" aria-label={`Remove ${k}`} onClick={() => sim.removeRegister(k)}>

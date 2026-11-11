@@ -664,6 +664,8 @@
 }
 .pl-table {
   width: 100%;
+  min-width: 820px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 12.5px;
 }
@@ -684,29 +686,40 @@
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
 }
-.pl-table tr {
+/* Reads happen every cycle, so they only light the LED and the flag; a
+   write from the client is rarer and worth a soft row tint. Nothing here
+   changes a width. */
+.pl-table td {
   transition: background 0.4s;
-}
-.pl-table tr.read td {
-  background: var(--active-bg);
 }
 .pl-table tr.write td {
   background: var(--warn-bg);
+}
+.pl-table tr:focus-within td {
+  background: var(--active-bg);
 }
 .pl-dev {
   font-family: var(--mono);
   font-weight: 700;
   white-space: nowrap;
 }
-.pl-table tr.read .pl-dev::before,
-.pl-table tr.write .pl-dev::before {
-  content: '●';
-  margin-right: 6px;
-  font-size: 9px;
-  color: var(--active);
+.pl-led {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--line-strong);
+  transition: background 0.2s, box-shadow 0.2s;
 }
-.pl-table tr.write .pl-dev::before {
-  color: #e8901f;
+.pl-table tr.read .pl-led {
+  background: var(--active);
+  box-shadow: 0 0 0 3px var(--active-bg);
+}
+.pl-table tr.write .pl-led {
+  background: #e8901f;
+  box-shadow: 0 0 0 3px var(--warn-bg);
 }
 .pl-comment {
   width: 100%;
@@ -761,7 +774,19 @@
   font-size: 11.5px;
   color: var(--ink-3);
   white-space: nowrap;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
 }
+.pl-table td.pl-dim {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.pl-stamp {
+  display: inline-block;
+  min-width: 102px;
+  margin-right: 4px;
+}
+/* Always laid out, only shown while active — so it never pushes anything. */
 .pl-flag {
   font-family: var(--mono);
   font-size: 10px;
@@ -769,6 +794,10 @@
   padding: 1px 6px;
   border-radius: 8px;
   background: var(--panel);
+  visibility: hidden;
+}
+.pl-flag.on {
+  visibility: visible;
 }
 .pl-flag.r {
   color: var(--active);
