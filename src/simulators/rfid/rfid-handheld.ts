@@ -40,10 +40,11 @@ export const LOG_MAX = 30;
 // Tags have a position; the antenna has a range that follows the Power setting
 // (0-300, as on the Zebra). A tag inside the range is read while the trigger is
 // held, more often and stronger the closer it lies. Units are the bench's own
-// pixels, so the view can draw it 1:1.
+// pixels, so the view can draw it 1:1. The device stands at the bench's left
+// edge with its antenna facing right, into the bench.
 
-export const BENCH = { width: 360, height: 720 };
-export const ANTENNA = { x: 360, y: 210 };
+export const BENCH = { width: 380, height: 640 };
+export const ANTENNA = { x: 0, y: 200 };
 /** Read range at full power (300). */
 export const MAX_RANGE = 330;
 const TICK_MS = 100;
@@ -137,6 +138,8 @@ interface HandheldState extends TagReaderState {
   replacementTag: string;
   replacementSending: boolean;
   replacementFailure: SendFailure | null;
+  /** Power being dragged in Pengaturan, not saved yet: the bench shows its range live. */
+  powerPreview: number | null;
   master: MasterStatus;
   masterError: string | null;
   masterFrom: string | null;
@@ -144,14 +147,14 @@ interface HandheldState extends TagReaderState {
   log: SendLog[];
 }
 
-// Four within reach at the default power (near, mid, mid, edge), two outside it.
+// Four within reach at the default power (near, near, mid, edge), two outside it.
 const DEFAULT_BENCH: BenchTag[] = [
-  { epc: 'E280689400004025A987A05A', x: 250, y: 110 },
-  { epc: 'E280689400004025AD44841C', x: 225, y: 205 },
-  { epc: 'E28068940000502B56E4B56D', x: 280, y: 360 },
-  { epc: 'E28068940000402663B08D7A', x: 155, y: 275 },
-  { epc: 'E2806894000050367572D095', x: 90, y: 470 },
-  { epc: 'E28068940000502B56E5EEF0', x: 200, y: 580 },
+  { epc: 'E280689400004025A987A05A', x: 100, y: 95 },
+  { epc: 'E280689400004025AD44841C', x: 135, y: 195 },
+  { epc: 'E28068940000502B56E4B56D', x: 90, y: 345 },
+  { epc: 'E28068940000402663B08D7A', x: 205, y: 265 },
+  { epc: 'E2806894000050367572D095', x: 300, y: 440 },
+  { epc: 'E28068940000502B56E5EEF0', x: 170, y: 560 },
 ];
 
 /**
@@ -253,6 +256,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       replacementTag: '',
       replacementSending: false,
       replacementFailure: null,
+      powerPreview: null,
       master: 'idle',
       masterError: null,
       masterFrom: null,
@@ -406,16 +410,22 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
   // --- bench ------------------------------------------------------------------
 
   /** Read range in bench pixels; follows Power like the real RF output. */
-  range(): number {
-    return (MAX_RANGE * Math.min(300, Math.max(0, this.num('power')))) / 300;
+  range(power = this.num('power')): number {
+    return (MAX_RANGE * Math.min(300, Math.max(0, power))) / 300;
   }
 
   distance(t: BenchTag): number {
     return Math.hypot(t.x - ANTENNA.x, t.y - ANTENNA.y);
   }
 
-  inRange(t: BenchTag): boolean {
-    return this.distance(t) <= this.range();
+  inRange(t: BenchTag, power?: number): boolean {
+    return this.distance(t) <= this.range(power);
+  }
+
+  /** The bench previews a Power value while it is dragged; null drops the preview. */
+  setPowerPreview(power: number | null) {
+    if (power === this.state.powerPreview) return;
+    this.setState({ powerPreview: power });
   }
 
   /** The tags the API would receive: the unique EPCs of this session. */
@@ -423,10 +433,11 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     return this.state.session.map((t) => t.epc);
   }
 
+  /** A tag's centre stays far enough in that the whole label is on the bench. */
   private clamp(x: number, y: number) {
     return {
-      x: Math.round(Math.min(BENCH.width - 20, Math.max(20, x))),
-      y: Math.round(Math.min(BENCH.height - 20, Math.max(20, y))),
+      x: Math.round(Math.min(BENCH.width - 70, Math.max(70, x))),
+      y: Math.round(Math.min(BENCH.height - 32, Math.max(32, y))),
     };
   }
 
@@ -438,7 +449,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     let pos = at;
     if (!pos) {
       const r = this.range() * (0.3 + Math.random() * 0.55);
-      const a = Math.PI * (0.75 + Math.random() * 0.5);
+      const a = Math.PI * (Math.random() * 0.5 - 0.25);
       pos = { x: ANTENNA.x + r * Math.cos(a), y: ANTENNA.y + r * Math.sin(a) };
     }
     this.setState({ bench: [...this.state.bench, { epc: id, ...this.clamp(pos.x, pos.y) }] });

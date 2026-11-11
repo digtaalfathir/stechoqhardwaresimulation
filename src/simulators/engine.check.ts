@@ -166,9 +166,9 @@ async function main() {
     `base url and endpoint join into one target (got ${rfid.url()})`,
   );
 
-  const near = { x: ANTENNA.x - 60, y: ANTENNA.y };
-  const mid = { x: ANTENNA.x - 150, y: ANTENNA.y + 40 };
-  const far = { x: 20, y: BENCH.height - 20 };
+  const near = { x: ANTENNA.x + 80, y: ANTENNA.y };
+  const mid = { x: ANTENNA.x + 150, y: ANTENNA.y + 40 };
+  const far = { x: BENCH.width - 70, y: BENCH.height - 40 };
   rfid.clearBench();
   assert(rfid.addBenchTag('aaaa', near) === 'AAAA', 'a placed EPC is upper-cased');
   rfid.addBenchTag('BBBB', mid);
@@ -237,8 +237,11 @@ async function main() {
   assert(rfid.state.session.length === 0, 'the trigger with tags on screen starts a new scan (Scan Baru)');
   assert(rfid.transmission.sent === 1, 'a scan that read nothing sends nothing');
   rfid.applyConfig({ power: 300 });
-  assert(rfid.inRange({ epc: 'X', x: 40, y: ANTENNA.y }), 'full power reaches across the bench');
+  assert(rfid.inRange({ epc: 'X', x: ANTENNA.x + 320, y: ANTENNA.y }), 'full power reaches across the bench');
   rfid.applyConfig({ power: 200 });
+  rfid.setPowerPreview(50);
+  assert(!rfid.inRange(tagAt('BBBB'), rfid.state.powerPreview!) && rfid.inRange(tagAt('BBBB')), 'a previewed power is drawn, not used to read');
+  rfid.setPowerPreview(null);
 
   // Lanjutkan keeps what is on screen, and those tags become LAMA.
   rfid.pressTrigger();
@@ -474,8 +477,8 @@ async function main() {
 
   // The first tag read stops the scan at once and asks for the old tag.
   repl.clearBench();
-  repl.addBenchTag('E28068940000000000000703', { x: ANTENNA.x - 50, y: ANTENNA.y });
-  repl.addBenchTag('E28068940000000000000704', { x: ANTENNA.x - 60, y: ANTENNA.y + 30 });
+  repl.addBenchTag('E28068940000000000000703', { x: ANTENNA.x + 80, y: ANTENNA.y });
+  repl.addBenchTag('E28068940000000000000704', { x: ANTENNA.x + 90, y: ANTENNA.y + 30 });
   const beforeOpen = repl.transmission.sent;
   repl.pressTrigger();
   await sleep(300);

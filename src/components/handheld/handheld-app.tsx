@@ -495,6 +495,14 @@ function SettingsScreen({
     return () => clearTimeout(id);
   }, [base]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Power is felt on the bench while it is dragged, not only after Simpan.
+  const draftPower = Number(draft.power);
+  const savedPower = sim.num('power');
+  useEffect(() => {
+    sim.setPowerPreview(draftPower !== savedPower ? draftPower : null);
+  }, [draftPower, savedPower]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => sim.setPowerPreview(null), [sim]);
+
   // A code the new host does not know is cleared, so it never reaches that host.
   useEffect(() => {
     if (st.master !== 'ready' || st.masterFrom !== base) return;

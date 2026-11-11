@@ -11,7 +11,9 @@ import { beep } from './sound';
 import './handheld.css';
 
 /** The stage is drawn at this size and scaled to fit the column and the window. */
-const STAGE = { width: 810, height: 930 };
+const STAGE = { width: 840, height: 880 };
+/** Where the bench starts: right at the antenna's face. */
+const BENCH_LEFT = 450;
 
 /**
  * The handheld workspace: the device and the tags on the bench beside it, with
@@ -60,9 +62,13 @@ function Stage({ sim }: { sim: RfidHandheldSimulator }) {
   useLayoutEffect(() => {
     const el = wrap.current;
     if (!el) return;
+    // The whole device should be visible without scrolling: fit what is left of
+    // the window below the header, not the whole window.
     const fit = () => {
-      const byWidth = el.clientWidth / STAGE.width;
-      const byHeight = Math.max(0.62, (window.innerHeight - 24) / STAGE.height);
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const room = window.innerHeight - Math.min(top, window.innerHeight * 0.45) - 16;
+      const byWidth = (el.clientWidth - 24) / STAGE.width;
+      const byHeight = Math.max(0.5, room / STAGE.height);
       setScale(Math.min(1, byWidth, byHeight));
     };
     fit();
@@ -184,12 +190,9 @@ function Device({ sim }: { sim: RfidHandheldSimulator }) {
           <i />
         </div>
       )}
-      <div className="hh-grip">
-        <button type="button" className={`hh-trigger${st.scanning ? ' held' : ''}`} aria-label="Trigger" {...hold} />
-      </div>
       <div className="hh-body">
-        <button type="button" className="hh-side-key left" aria-label="Side scan key" {...hold} />
-        <button type="button" className="hh-side-key right" aria-label="Side scan key" {...hold} />
+        <span className="hh-side-key left" />
+        <span className="hh-side-key right" />
         <span className={`hh-led ${led}`} />
         <span className="hh-speaker" />
         <div className="hh-screen">
@@ -200,7 +203,7 @@ function Device({ sim }: { sim: RfidHandheldSimulator }) {
         <div className="hh-keypad" aria-hidden="true">
           <div className="kr">
             <span className="k sm">P1</span>
-            <span className={`k scan${st.scanning ? ' held' : ''}`} {...hold}>
+            <span className={`k scan${st.scanning ? ' held' : ''}`} title="Scan — hold" {...hold}>
               • • •
             </span>
             <span className="k sm">◆</span>
@@ -267,7 +270,9 @@ function Device({ sim }: { sim: RfidHandheldSimulator }) {
 function Bench({ sim, scale }: { sim: RfidHandheldSimulator; scale: number }) {
   const t = useT();
   const st = sim.state;
-  const range = sim.range();
+  // While Power is being dragged in Pengaturan the bench already shows its reach.
+  const power = st.powerPreview ?? sim.num('power');
+  const range = sim.range(power);
   const [epc, setEpc] = useState('');
   const [error, setError] = useState(false);
   const drag = useRef<{ epc: string; dx: number; dy: number } | null>(null);
@@ -282,7 +287,7 @@ function Bench({ sim, scale }: { sim: RfidHandheldSimulator; scale: number }) {
   };
 
   return (
-    <>
+    <div className="hh-bench-area" style={{ left: BENCH_LEFT, width: BENCH.width }}>
       <div
         className="hh-bench"
         style={{ width: BENCH.width, height: BENCH.height }}
@@ -298,11 +303,12 @@ function Bench({ sim, scale }: { sim: RfidHandheldSimulator; scale: number }) {
           <circle cx={ANTENNA.x} cy={ANTENNA.y} r={range} className={st.scanning ? 'live' : ''} />
         </svg>
         <span className="hh-range-label">
-          {t('hh.range', 'Antenna range')} · Power {sim.num('power')}
+          {t('hh.range', 'Antenna range')} · Power {power}
+          {st.powerPreview !== null && <em> · {t('hh.unsaved', 'not saved yet')}</em>}
         </span>
         {st.bench.map((tag) => {
           const r = read.get(tag.epc);
-          const inRange = sim.inRange(tag);
+          const inRange = sim.inRange(tag, power);
           const cls = r ? `read q-${quality(r)}` : inRange ? 'in' : 'out';
           return (
             <div
@@ -359,9 +365,9 @@ function Bench({ sim, scale }: { sim: RfidHandheldSimulator; scale: number }) {
           </button>
         </div>
         <p className="hh-hint">
-          {t('hh.hint', 'Hold the trigger, the yellow key or')} <kbd>Space</kbd> {t('hh.hint.b', 'to scan; release to send. Drag tags in and out of range.')}
+          {t('hh.hint', 'Hold the yellow key or')} <kbd>Space</kbd> {t('hh.hint.b', 'to scan; release to send. Drag tags in and out of range.')}
         </p>
       </div>
-    </>
+    </div>
   );
 }

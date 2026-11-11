@@ -265,7 +265,8 @@ const ID: Record<string, string> = {
   'hh.add': 'Tambah',
   'hh.random': 'Acak ×5',
   'hh.clear': 'Kosongkan meja',
-  'hh.hint': 'Tahan trigger, tombol kuning, atau',
+  'hh.hint': 'Tahan tombol kuning atau',
+  'hh.unsaved': 'belum disimpan',
   'hh.hint.b': 'untuk scan; lepas untuk kirim. Geser tag masuk dan keluar jangkauan.',
   'sim.nutrunner.tagline':
     'Pengencangan terkendali torsi yang dilaporkan sebagai telegram Open Protocol MID 0061 sungguhan.',
