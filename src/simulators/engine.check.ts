@@ -5,7 +5,7 @@
  * envelopes and timer cleanup. Runs headless — the engine has no DOM deps.
  */
 import { simulators, getSimulator, plannedSimulators, CATEGORIES } from './registry';
-import { RfidHandheldSimulator } from './rfid/rfid-handheld';
+import { ANTENNA, BENCH, RfidHandheldSimulator, quality } from './rfid/rfid-handheld';
 import type { MasterFetch } from './rfid/master-data';
 import { RfidReaderSimulator } from './rfid/rfid-reader';
 import { NutrunnerSimulator } from './nutrunner/nutrunner';
@@ -125,7 +125,7 @@ async function main() {
     return accepted;
   };
   rfid.applyConfig({
-    interval: '50',
+    power: '999',
     antenna: '9',
     initial_year: '1999',
     mode: 'nonsense',
@@ -135,7 +135,7 @@ async function main() {
     reader_id: 'HACKED-READER',
   });
   assert(rfid.cfg('reader_id') === 'SIMULATOR-01', 'a read-only field ignores even a direct patch');
-  assert(rfid.num('interval') === 200, 'below-minimum numbers clamp to the field minimum');
+  assert(rfid.num('power') === 300, 'power clamps to the Zebra maximum of 300');
   assert(rfid.cfg('antenna') === '1', 'an antenna outside 1-8 is rejected');
   assert(rfid.cfg('initial_year') === '2026', 'a year outside the option list is rejected');
   assert(rfid.cfg('mode') === 'wo', 'a switch value outside its two options is rejected');
@@ -145,11 +145,11 @@ async function main() {
   rfid.applyConfig({ rr_type: 'T1B' });
   assert(rfid.bool('opname') === false, 'a checkbox stores a real boolean');
   assert(rfid.cfg('baseUrl') === 'https://my-own-host.test', 'a combo accepts a host outside its option list');
-  rfid.applyConfig({ interval: 'not-a-number' });
-  assert(rfid.num('interval') === 200, 'unparseable numbers leave the previous value intact');
+  rfid.applyConfig({ power: 'not-a-number' });
+  assert(rfid.num('power') === 300, 'unparseable numbers leave the previous value intact');
   assert(rfid.status === 'CONNECTED', 'applying configuration brings the device online');
 
-  // --- rfid batch behaviour ---
+  // --- hold the trigger, release to send ---
   rfid.applyConfig({
     baseUrl: 'https://wms.suite.stechoq-j.com',
     endpoint: '/api/v1/warehouse-management/jmp/log-rfids/components/handheld',
@@ -159,31 +159,49 @@ async function main() {
     opname: true,
     maker_name: 'check',
     factory_code: '5022',
-    interval: 200,
+    power: 200,
   });
   assert(
     rfid.url() === 'https://wms.suite.stechoq-j.com/api/v1/warehouse-management/jmp/log-rfids/components/handheld',
     `base url and endpoint join into one target (got ${rfid.url()})`,
   );
 
-  rfid.setTagsText('AAAA\nBBBB\n\n  CCCC  ');
-  assert(rfid.tags().length === 3, 'the tag list trims blanks and whitespace');
-  assert(rfid.cfg('rr_type') === 'T1B', 'editing tags never touches configuration');
+  const near = { x: ANTENNA.x - 60, y: ANTENNA.y };
+  const mid = { x: ANTENNA.x - 150, y: ANTENNA.y + 40 };
+  const far = { x: 20, y: BENCH.height - 20 };
+  rfid.clearBench();
+  assert(rfid.addBenchTag('aaaa', near) === 'AAAA', 'a placed EPC is upper-cased');
+  rfid.addBenchTag('BBBB', mid);
+  rfid.addBenchTag('CCCC', far);
+  assert(rfid.addBenchTag('AAAA') === null, 'the same tag cannot lie on the bench twice');
+  assert(rfid.addBenchTag('not hex!') === null, 'an EPC must be hex');
+  const tagAt = (epc: string) => rfid.state.bench.find((t) => t.epc === epc)!;
+  assert(rfid.inRange(tagAt('AAAA')) && rfid.inRange(tagAt('BBBB')), 'near and mid tags are within range');
+  assert(!rfid.inRange(tagAt('CCCC')), 'a far tag is out of range');
 
-  rfid.run('scan-once');
-  await sleep(30);
-  const scan = rfid.events.find((e) => e.name === 'RFID_SENT');
-  assert(scan, 'a delivered sweep produces RFID_SENT');
-  assert(lastSentTo === rfid.url(), 'the request goes to the joined base URL + endpoint');
+  rfid.pressTrigger();
+  assert(rfid.state.scanning && rfid.status === 'SIMULATING', 'holding the trigger scans');
+  await sleep(600);
+  const held = rfid.state.session;
   assert(
-    JSON.stringify((lastSentBody as Record<string, unknown>).idHex) === JSON.stringify(['AAAA', 'BBBB', 'CCCC']),
-    'the body handed to the transport is the payload itself',
+    JSON.stringify(held.map((t) => t.epc).sort()) === JSON.stringify(['AAAA', 'BBBB']),
+    `only tags in range are read (got ${held.map((t) => t.epc)})`,
   );
-  const body = scan!.payload;
-  assert(Array.isArray(body.idHex), 'idHex is an array, not a single tag');
+  assert(held.every((t) => t.reads > 1 && t.isNew), 'tags are read again and again, and are BARU');
+  assert(held.find((t) => t.epc === 'AAAA')!.rssi > held.find((t) => t.epc === 'BBBB')!.rssi, 'a nearer tag answers stronger');
+  assert(rfid.transmission.sent === 0, 'nothing is sent while the trigger is held');
+  rfid.releaseTrigger();
+  await sleep(30);
+  assert(!rfid.state.scanning && rfid.status === 'CONNECTED', 'releasing the trigger stops the scan');
+  assert(rfid.transmission.sent === 1, 'releasing sends exactly once');
+  assert(rfid.state.send === 'sent' && rfid.state.failure === null, 'a delivered send reads as Terkirim');
+  assert(lastSentTo === rfid.url(), 'the request goes to the joined base URL + endpoint');
+  const scan = rfid.events.find((e) => e.name === 'RFID_SENT')!;
+  const body = scan.payload;
+  assert(body === lastSentBody, 'the body handed to the transport is the payload itself');
   assert(
-    JSON.stringify(body.idHex) === JSON.stringify(['AAAA', 'BBBB', 'CCCC']),
-    'one sweep sends the whole tag list at once',
+    JSON.stringify([...(body.idHex as string[])].sort()) === JSON.stringify(['AAAA', 'BBBB']),
+    'the batch carries each unique tag once',
   );
   assert(body.reader_id === 'SIMULATOR-01', 'the reader id is fixed to SIMULATOR-01');
   assert(body.antenna === '3' && body.initial_year === '2027', 'configured fields reach the payload');
@@ -192,122 +210,151 @@ async function main() {
   assert(!Number.isNaN(Date.parse(String(body.timestamp))), 'the payload timestamp is ISO-8601');
   assert(
     JSON.stringify(Object.keys(body)) ===
-      JSON.stringify([
-        'rr_type',
-        'maker_name',
-        'idHex',
-        'initial_year',
-        'reader_id',
-        'antenna',
-        'timestamp',
-        'opname',
-        'mode',
-        'factory_code',
-      ]),
+      JSON.stringify(['rr_type', 'maker_name', 'idHex', 'initial_year', 'reader_id', 'antenna', 'timestamp', 'opname', 'mode', 'factory_code']),
     'the payload carries exactly the agreed keys',
   );
-  assert(scan!.transport?.protocol === 'REST', 'a sweep produces a REST frame');
-  assert(scan!.transport!.live === true, 'the frame is marked as really sent');
-  assert(scan!.transport!.response?.status === 201, 'the frame carries the response status');
-  assert(scan!.transport!.detail.includes('201 Created'), 'the frame shows the response line');
-  assert(scan!.transport!.detail.includes('log saved'), 'the frame shows the response message');
-  assert(scan!.summary?.includes('201 Created'), 'the event summary states the outcome');
-  assert(rfid.transmission.delivered === 1 && rfid.transmission.failed === 0, 'a delivered send counts as delivered');
-  assert(rfid.transmission.lastResponse?.message === 'log saved', 'the response is kept for the result panel');
+  assert(scan.transport?.protocol === 'REST' && scan.transport.live === true, 'the send is a live REST frame');
+  assert(scan.transport!.response?.status === 201, 'the frame carries the response status');
+  assert(scan.transport!.detail.includes('log saved'), 'the frame shows the response message');
   assert(
-    scan!.transport!.detail.includes('POST /api/v1/warehouse-management/jmp/log-rfids/components/handheld'),
+    scan.transport!.detail.includes('POST /api/v1/warehouse-management/jmp/log-rfids/components/handheld'),
     'the frame posts to the configured endpoint path',
   );
-  assert(scan!.transport!.detail.includes('Host: wms.suite.stechoq-j.com'), 'the frame targets the configured host');
+  assert(rfid.events.some((e) => e.name === 'TRIGGER_RELEASED'), 'the release is logged');
+  assert(rfid.state.log[0].ok && rfid.state.log[0].count === 2, 'the send lands in Riwayat Log');
 
-  const generated = rfid.tags().length;
-  rfid.addRandomTag();
-  assert(rfid.tags().length === generated + 1, 'Generate Random Tag appends to the live tag list');
-  assert(/^E2806894[0-9A-F]{16}$/.test(rfid.tags()[generated]), 'the generated tag is a 24-char EPC');
-  assert(rfid.events[0].name === 'TAG_GENERATED', 'generating a tag is logged');
+  assert(quality({ reads: 339, rssi: -50 }) === 'strong', 'R:339 near the reader is Kuat');
+  assert(quality({ reads: 36, rssi: -62 }) === 'medium', 'R:36 at a middling signal is Sedang');
+  assert(quality({ reads: 3, rssi: -45 }) === 'weak', 'R:3 is Lemah however strong the signal');
 
-  rfid.setTagsText('   \n  ');
-  rfid.run('scan-once');
-  assert(rfid.events[0].name === 'SCAN_NO_TAG', 'an empty tag list sends nothing and says so');
+  // Power is the range: at 0 nothing answers, and an empty scan sends nothing.
+  rfid.applyConfig({ power: 0 });
+  assert(rfid.range() === 0 && !rfid.inRange(tagAt('AAAA')), 'power 0 reaches nothing');
+  rfid.pressTrigger();
+  await sleep(250);
+  rfid.releaseTrigger();
+  await sleep(20);
+  assert(rfid.state.session.length === 0, 'the trigger with tags on screen starts a new scan (Scan Baru)');
+  assert(rfid.transmission.sent === 1, 'a scan that read nothing sends nothing');
+  rfid.applyConfig({ power: 300 });
+  assert(rfid.inRange({ epc: 'X', x: 40, y: ANTENNA.y }), 'full power reaches across the bench');
+  rfid.applyConfig({ power: 200 });
 
-  rfid.setTagsText('AAAA\nBBBB');
-  const sentBefore = rfid.transmission.sent;
-  const seqBefore = rfid.events[0].seq;
-  rfid.run('start-scan');
-  assert(rfid.status === 'SIMULATING', 'continuous scanning reports SIMULATING');
-  assert(rfid.transmission.sent === sentBefore + 1, 'starting a scan sends immediately, without waiting an interval');
-  await sleep(30);
-  await sleep(520);
-  rfid.run('stop-scan');
-  const sentWhileScanning = rfid.transmission.sent;
-  assert(sentWhileScanning >= sentBefore + 3, `the scan loop keeps sending (got ${sentWhileScanning - sentBefore})`);
-  assert(rfid.status === 'CONNECTED', 'stopping the scan returns to CONNECTED');
-  const sweeps = rfid.events.filter((e) => e.name === 'RFID_SENT' && e.seq > seqBefore);
-  assert(sweeps.length >= 3, 'the run produced several sweeps to compare');
-  assert(
-    new Set(sweeps.map((e) => JSON.stringify(e.payload.idHex))).size === 1,
-    'every sweep in a run carries the same tag list',
-  );
-  await sleep(320);
-  assert(rfid.transmission.sent === sentWhileScanning, 'stopping the scan clears the interval');
+  // Lanjutkan keeps what is on screen, and those tags become LAMA.
+  rfid.pressTrigger();
+  await sleep(250);
+  rfid.releaseTrigger();
+  await sleep(20);
+  const readsBefore = rfid.detected();
+  rfid.continueScan();
+  assert(rfid.state.session.every((t) => !t.isNew), 'Lanjutkan marks the earlier tags LAMA');
+  await sleep(250);
+  rfid.stopButton();
+  await sleep(20);
+  assert(rfid.detected() > readsBefore, 'Lanjutkan keeps counting on top of the earlier reads');
+  assert(rfid.state.send === 'sent', 'Stop sends, like releasing the trigger');
 
-  // --- failure is reported, not swallowed ---
+  // --- a failed send keeps the tags, and asks before throwing them away ---
   rfid.sender = async () => rejected;
-  rfid.run('scan-once');
+  rfid.newScan();
+  await sleep(250);
+  rfid.stopButton();
   await sleep(30);
-  assert(rfid.events[0].name === 'RFID_SEND_FAILED', 'a rejected send produces RFID_SEND_FAILED');
-  assert(rfid.events[0].tone === 'error', 'a rejected send is logged as an error');
-  assert(rfid.events[0].summary?.includes('422'), 'the summary carries the rejection status');
-  assert(rfid.transmission.failed === 1, 'a rejected send counts as failed');
-  assert(rfid.transmission.lastResponse?.message === 'rr_type is required', "the server's own message is kept");
+  assert(rfid.state.send === 'failed' && rfid.unsent(), 'a rejected send leaves the tags unsent');
+  assert(rfid.state.failure?.status === 422, 'the failure keeps the HTTP status');
+  assert(rfid.state.failure?.message === 'rr_type is required', "and the server's own message");
+  assert(rfid.events[0].name === 'RFID_SEND_FAILED' && rfid.events[0].tone === 'error', 'the failure is logged as an error');
+  const unsentCount = rfid.state.session.length;
 
+  rfid.pressTrigger();
+  assert(rfid.state.prompt === 'trigger' && !rfid.state.scanning, 'the trigger asks first instead of dropping unsent tags');
+  rfid.answerPrompt('cancel');
+  assert(rfid.state.prompt === null && rfid.state.session.length === unsentCount, 'Batal changes nothing');
+  rfid.pressTrigger();
+  rfid.answerPrompt('discard');
+  assert(rfid.state.session.length === 0 && !rfid.state.scanning, 'from the trigger, Buang only empties the list');
+
+  rfid.pressTrigger();
+  await sleep(200);
+  rfid.releaseTrigger();
+  await sleep(30);
+  rfid.newScan();
+  assert(rfid.state.prompt === 'button', 'Scan Baru asks too');
+  rfid.sender = async () => accepted;
+  rfid.answerPrompt('send');
+  await sleep(30);
+  assert(rfid.state.send === 'sent' && rfid.state.session.length > 0, 'Kirim dulu resends and keeps the list');
+
+  rfid.sender = async () => rejected;
+  rfid.pressTrigger();
+  await sleep(200);
+  rfid.releaseTrigger();
+  await sleep(30);
+  rfid.newScan();
+  rfid.sender = async () => accepted;
+  rfid.answerPrompt('discard');
+  assert(rfid.state.scanning, 'from Scan Baru, Buang & scan baru starts scanning at once');
+  rfid.stopButton();
+  await sleep(30);
+
+  // Kirim Ulang sends the same tags again.
   rfid.sender = async () => blocked;
-  rfid.run('scan-once');
+  rfid.newScan();
+  await sleep(200);
+  rfid.stopButton();
   await sleep(30);
-  assert(rfid.events[0].name === 'RFID_SEND_FAILED', 'a blocked request also fails loudly');
-  assert(rfid.transmission.lastResponse?.error?.includes('blocked'), 'a blocked request explains itself');
-  assert(rfid.transmission.lastResponse?.status === 0, 'a blocked request has no status code');
-  assert(
-    rfid.events[0].transport!.detail.includes('--- no response ---'),
-    'the frame says plainly that no response arrived',
-  );
+  assert(rfid.state.failure?.status === 0, 'an unreachable server has no status');
+  assert(rfid.transmission.lastResponse?.error?.includes('blocked'), 'and explains itself');
+  assert(rfid.events[0].transport!.detail.includes('--- no response ---'), 'the frame says no response arrived');
+  rfid.sender = async () => accepted;
+  const unsentTags = rfid.tags().join();
+  assert(await rfid.send(), 'Kirim Ulang goes through once the server answers');
+  assert(rfid.tags().join() === unsentTags && rfid.state.send === 'sent', 'the same tags were sent');
 
-  // A slow endpoint must not stack requests behind a fast interval.
-  let release: (() => void) | null = null;
+  // While a send is in flight the trigger is ignored until the result is in.
+  let finish: (() => void) | null = null;
   rfid.sender = () =>
     new Promise<TransportResponse>((resolve) => {
-      release = () => resolve(accepted);
+      finish = () => resolve(accepted);
     });
-  rfid.run('scan-once');
+  rfid.pressTrigger();
+  await sleep(150);
+  rfid.releaseTrigger();
   await sleep(10);
-  const skippedBefore = rfid.transmission.skipped;
-  rfid.run('scan-once');
-  await sleep(10);
-  assert(rfid.transmission.skipped === skippedBefore + 1, 'a second sweep is skipped while one is still in flight');
-  release!();
+  assert(rfid.state.send === 'sending', 'the send is in flight');
+  rfid.pressTrigger();
+  assert(!rfid.state.scanning && !rfid.canStart(), 'the trigger is ignored while sending');
+  finish!();
   await sleep(20);
-  rfid.sender = async () => accepted;
+  assert(rfid.state.send === 'sent', 'and works again once the result is in');
+  rfid.sender = async (url, b) => {
+    lastSentTo = url;
+    lastSentBody = b;
+    return accepted;
+  };
 
-  const framed = withResponse(httpPost('http://x.test/y', { a: 1 }), rejected);
-  assert(framed.summary.includes('422 Unprocessable Entity'), 'a framed response states its status');
-  assert(framed.response?.ok === false, 'a framed response keeps its verdict');
+  // --- Riwayat Log ---
+  const failedEntry = rfid.state.log.find((e) => !e.ok)!;
+  assert(failedEntry && rfid.canResend(failedEntry), 'a failed scan can be resent from the log');
+  assert(await rfid.resendLog(failedEntry.id), 'the resend goes through');
+  assert(lastSentTo === failedEntry.url, 'a resend goes to the original address');
+  assert(lastSentBody === failedEntry.payload, 'with the original data, unchanged');
+  assert(rfid.state.log[0].resentFrom === failedEntry.at, 'and is logged as a resend of that entry');
+  for (let i = 0; i < 32; i++) await rfid.send();
+  assert(rfid.state.log.length === 30, 'the log keeps the last 30 attempts');
 
   // --- controls report their own condition ---
-  assert(rfid.actionState('start-scan').disabled !== true, 'Start Scan is available while idle');
-  assert(rfid.actionState('start-scan').active !== true, 'Start Scan does not look running while idle');
-  assert(rfid.actionState('stop-scan').disabled === true, 'Stop Scan is dead while idle');
-  rfid.run('start-scan');
-  assert(rfid.actionState('start-scan').active === true, 'Start Scan reads as running while scanning');
-  assert(rfid.actionState('start-scan').disabled === true, 'Start Scan cannot be pressed twice');
-  assert(rfid.actionState('stop-scan').disabled !== true, 'Stop Scan becomes available while scanning');
-  rfid.run('stop-scan');
-  assert(rfid.actionState('start-scan').active !== true, 'Start Scan stops reading as running after Stop');
-  assert(rfid.actionState('stop-scan').disabled === true, 'Stop Scan goes dead again after stopping');
+  assert(rfid.actionState('pull-trigger').disabled !== true, 'Pull Trigger is available while idle');
+  rfid.pressTrigger();
+  assert(rfid.actionState('pull-trigger').active === true, 'Pull Trigger reads as running while held');
+  rfid.releaseTrigger();
   await sleep(30);
 
+  const logBefore = rfid.state.log.length;
   rfid.run('reset');
-  assert(rfid.transmission.sent === 0 && !rfid.state.scanning, 'reset clears device state');
-  assert(rfid.transmission.delivered === 0 && rfid.transmission.failed === 0, 'reset clears the delivery counters');
+  assert(rfid.transmission.sent === 0 && rfid.state.session.length === 0, 'reset clears the session and counters');
+  assert(rfid.state.log.length === logBefore, 'reset keeps Riwayat Log: it is diagnostics, not settings');
+  assert(rfid.state.bench.length === 3, 'reset keeps the tags on the bench');
   assert(rfid.cfg('maker_name') === 'check', 'reset keeps the applied configuration');
   assert(rfid.events[0].name === 'DEVICE_RESET', 'reset is logged');
 
@@ -425,16 +472,23 @@ async function main() {
     `the replace endpoint joins onto the base URL (got ${repl.replaceUrl()})`,
   );
 
-  // A trigger pull halts the scan and asks for the old tag instead of sending.
-  repl.setTagsText('RFID_NEW_703');
+  // The first tag read stops the scan at once and asks for the old tag.
+  repl.clearBench();
+  repl.addBenchTag('E28068940000000000000703', { x: ANTENNA.x - 50, y: ANTENNA.y });
+  repl.addBenchTag('E28068940000000000000704', { x: ANTENNA.x - 60, y: ANTENNA.y + 30 });
   const beforeOpen = repl.transmission.sent;
-  repl.run('start-scan');
-  await sleep(20);
-  assert(repl.state.replacementOpen, 'a trigger pull opens the replacement form');
+  repl.pressTrigger();
+  await sleep(300);
+  assert(repl.state.replacementOpen, 'a tag read in replacement mode opens the form');
   assert(!repl.state.scanning, 'the scanner stops when the form opens');
+  assert(repl.state.session.length === 1, 'only the first tag is kept, not a bulk scan');
+  assert(repl.newTag() === repl.state.session[0].epc, 'that tag is the new RFID');
   assert(repl.transmission.sent === beforeOpen, 'nothing is sent before the form is filled in');
   assert(repl.events[0].name === 'REPLACEMENT_SCANNED', 'the scan is logged as a replacement capture');
-  assert(repl.actionState('stop-scan').disabled === true, 'continuous scanning is meaningless here');
+  repl.releaseTrigger();
+  assert(repl.transmission.sent === beforeOpen, 'releasing the trigger does not send a scan batch');
+  assert(!repl.canStart(), 'the trigger is ignored while the form is open');
+  const newTag = repl.newTag();
 
   // An incomplete form is refused, not posted half-filled.
   assert((await repl.submitReplacement('', 'Tag damaged')) === false, 'an empty old tag is refused');
@@ -445,10 +499,7 @@ async function main() {
 
   // A factory the host does not know has no id, so it cannot be posted.
   repl.applyConfig({ factory_code: 'NOT-IN-MASTER' });
-  assert(
-    repl.replacementProblem('OLD', 'Tag damaged') === 'unknown-factory',
-    'a factory outside the master data blocks the replacement',
-  );
+  assert(repl.replacementProblem('OLD', 'Tag damaged') === 'unknown-factory', 'a factory outside the master data blocks it');
   assert(Number.isNaN(repl.factoryId()), 'and it has no id to guess at');
   assert((await repl.submitReplacement('OLD', 'Tag damaged')) === false, 'and it is refused, not sent as null');
   repl.applyConfig({ factory_code: '' });
@@ -464,35 +515,40 @@ async function main() {
     `the replacement body carries exactly the agreed keys (got ${Object.keys(replBody)})`,
   );
   assert(replBody.old_rfid_number === 'E2806894000050367572D095', 'the old tag is trimmed');
-  assert(replBody.new_rfid_number === 'RFID_NEW_703', 'the new tag comes from the tag list');
+  assert(replBody.new_rfid_number === newTag, 'the new tag is the scanned one');
   assert(replBody.replacement_remark === 'Tag damaged', 'the reason reaches the body');
   assert(replBody.factory_id === 200 && typeof replBody.factory_id === 'number', 'factory_id is the numeric id');
-  assert(repl.cfg('factory_code') === '5022', 'while the scan payload keeps sending the code');
   assert(replBody.opname === true, 'opname rides along as a boolean');
   assert(repl.events[0].name === 'REPLACEMENT_SENT', 'a delivered replacement is logged as such');
-  assert(!repl.state.replacementOpen, 'the form closes once the endpoint accepts it');
+  assert(!repl.state.replacementOpen && repl.state.session.length === 0, 'success closes the form and clears the list');
+  assert(repl.state.log[0].kind === 'replacement' && repl.state.log[0].ok, 'the replacement lands in Riwayat Log');
+  assert(!repl.canResend(repl.state.log[0]), 'a replacement that went through cannot be resent');
 
-  // A rejected replacement keeps the form open so it can be corrected.
+  // A rejected replacement keeps the form open so it can be retried without scanning again.
   repl.sender = async () => rejected;
-  repl.run('scan-once');
-  await sleep(20);
-  assert(repl.state.replacementOpen, 'the form reopens on the next trigger pull');
+  repl.pressTrigger();
+  await sleep(300);
+  assert(repl.state.replacementOpen, 'the form opens again on the next trigger pull');
   assert((await repl.submitReplacement('OLD-TAG', 'Tag unreadable')) === false, 'a rejected replacement reports failure');
   assert(repl.state.replacementOpen, 'a rejected replacement keeps the form open');
+  assert(repl.state.replacementFailure?.status === 422, 'with the rejection to show');
   assert(repl.events[0].name === 'REPLACEMENT_FAILED', 'the rejection is logged');
+  assert(repl.canResend(repl.state.log[0]), 'a failed replacement can be resent from the log');
   repl.closeReplacement();
-  assert(!repl.state.replacementOpen, 'cancelling closes the form');
+  assert(!repl.state.replacementOpen && repl.state.session.length === 0, 'Batal closes the form and drops the tag');
   assert(repl.events[0].name === 'REPLACEMENT_CANCELLED', 'cancelling says nothing was sent');
 
-  // Back in wo mode the handheld sweeps as before.
+  // Back in wo mode the handheld scans in bulk again.
   repl.sender = async () => accepted;
   repl.applyConfig({ mode: 'wo', replacement: false });
-  repl.setTagsText('AAAA\nBBBB');
   const sweepBefore = repl.transmission.sent;
-  repl.run('scan-once');
+  repl.pressTrigger();
+  await sleep(250);
+  repl.releaseTrigger();
   await sleep(30);
-  assert(repl.transmission.sent === sweepBefore + 1, 'a normal sweep still sends');
-  assert(repl.events[0].name === 'RFID_SENT', 'a normal sweep is still an RFID_SENT');
+  assert(repl.state.session.length === 2, 'a normal scan reads every tag in range');
+  assert(repl.transmission.sent === sweepBefore + 1, 'and sends them once');
+  assert(repl.events[0].name === 'RFID_SENT', 'a normal scan is still an RFID_SENT');
   assert(!repl.state.replacementOpen, 'no form appears outside replacement mode');
   repl.clearTimers();
 
@@ -817,7 +873,7 @@ async function main() {
   probe.clearEvents();
   assert(probe.events.length === 0, 'the event log can be cleared');
 
-  const spinner = new RfidHandheldSimulator();
+  const spinner = new RfidReaderSimulator();
   spinner.applyConfig({ interval: 200 });
   spinner.run('start-scan');
   spinner.clearTimers();
@@ -863,6 +919,9 @@ async function main() {
   globalThis.fetch = realFetch;
 
   // --- wire builders ---
+  const framed = withResponse(httpPost('http://x.test/y', { a: 1 }), rejected);
+  assert(framed.summary.includes('422 Unprocessable Entity'), 'a framed response states its status');
+  assert(framed.response?.ok === false, 'a framed response keeps its verdict');
   const frame = httpPost('http://example.test:8080/api/x?y=1', { a: 1 });
   assert(frame.detail.includes('POST /api/x?y=1 HTTP/1.1'), 'the request line uses the endpoint path');
   assert(frame.detail.includes('Host: example.test:8080'), 'the Host header uses the endpoint host');

@@ -1,0 +1,1502 @@
+/* ============================================================================
+   Handheld workspace: a Zebra MC33-style device, the tag bench beside it, and
+   the WMS RFID Suite app on its screen. The app is laid out at the device's
+   native 480x800 and scaled into the screen, so its numbers are the APK's.
+   ========================================================================== */
+
+.hh-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 430px);
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+.hh-side {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.hh-side > * {
+  min-width: 0;
+}
+/* A narrow column: the verdict sits above the detail, not beside it. */
+.hh-side .send-result {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (max-width: 1100px) {
+  .hh-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.hh-stage-panel {
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 62% 40%, rgba(15, 76, 129, 0.07), transparent 60%),
+    linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 28px 28px,
+    var(--panel-alt);
+}
+.hh-stage-box {
+  position: relative;
+}
+.hh-stage {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform-origin: top center;
+  translate: -50% 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* --- bench ------------------------------------------------------------------ */
+
+.hh-bench {
+  position: absolute;
+  left: 0;
+  top: 0;
+  touch-action: none;
+}
+.hh-range {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.hh-range circle {
+  fill: rgba(18, 99, 168, 0.06);
+  stroke: rgba(18, 99, 168, 0.45);
+  stroke-width: 2;
+  stroke-dasharray: 7 6;
+  transition: r 0.2s;
+}
+.hh-range circle.live {
+  fill: rgba(18, 99, 168, 0.12);
+  stroke: rgba(18, 99, 168, 0.75);
+}
+.hh-range-label {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--active);
+}
+
+.hh-tag {
+  position: absolute;
+  width: 136px;
+  height: 60px;
+  background: #fff;
+  color: #13171c;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(16, 24, 40, 0.14);
+  padding: 8px 6px 6px 42px;
+  font-size: 10.5px;
+  cursor: grab;
+  touch-action: none;
+  z-index: 2;
+}
+.hh-tag:active {
+  cursor: grabbing;
+  z-index: 5;
+}
+/* The printed inlay antenna, as on a real UHF label. */
+.hh-tag::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 8px;
+  width: 28px;
+  height: 42px;
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(90deg, #b9824a 0 2px, transparent 2px 5px) 0 0 / 28px 14px no-repeat,
+    repeating-linear-gradient(90deg, #b9824a 0 2px, transparent 2px 5px) 0 28px / 28px 14px no-repeat,
+    linear-gradient(#b9824a, #b9824a) 12px 14px / 4px 14px no-repeat,
+    #f6efe6;
+}
+.hh-tag b {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.hh-tag-meta {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #78818d;
+}
+.hh-tag.out {
+  opacity: 0.55;
+  border-style: dashed;
+  box-shadow: none;
+}
+.hh-tag.read {
+  border-color: #2e7d32;
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.16), 0 2px 6px rgba(16, 24, 40, 0.14);
+}
+.hh-tag.read.q-medium {
+  border-color: #ef6c00;
+  box-shadow: 0 0 0 3px rgba(239, 108, 0, 0.16), 0 2px 6px rgba(16, 24, 40, 0.14);
+}
+.hh-tag.read.q-weak {
+  border-color: #c62828;
+  box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.14), 0 2px 6px rgba(16, 24, 40, 0.14);
+}
+.hh-tag-badge {
+  position: absolute;
+  right: -7px;
+  top: -7px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2e7d32;
+  color: #fff;
+  font-size: 11px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+}
+.hh-tag.q-medium .hh-tag-badge {
+  background: #ef6c00;
+}
+.hh-tag.q-weak .hh-tag-badge {
+  background: #c62828;
+}
+.hh-tag-x {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #78818d;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+}
+.hh-tag:hover .hh-tag-x,
+.hh-tag-x:focus-visible {
+  opacity: 1;
+}
+.hh-tag-x:hover {
+  background: #fdeceb;
+  color: #b3261e;
+}
+
+.hh-tray {
+  position: absolute;
+  left: 0;
+  /* narrower than the bench: the device's grip sweeps over its right end */
+  max-width: 250px;
+  display: grid;
+  gap: 8px;
+}
+.hh-add {
+  display: flex;
+  gap: 6px;
+}
+.hh-add input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 0 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--panel);
+  color: var(--ink);
+}
+.hh-add input.bad {
+  border-color: var(--error);
+}
+.hh-tray-row {
+  display: flex;
+  gap: 6px;
+}
+.hh-hint {
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+.hh-hint kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0 5px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+/* --- device ------------------------------------------------------------------- */
+
+.hh-device {
+  position: absolute;
+  left: 370px;
+  top: 0;
+  width: 440px;
+  height: 930px;
+}
+.hh-antenna {
+  position: absolute;
+  left: -32px;
+  top: 74px;
+  width: 250px;
+  height: 278px;
+  transform: rotate(-10deg);
+  border-radius: 30px 110px 26px 26px / 30px 70px 26px 26px;
+  background: linear-gradient(135deg, #3a4048, #1b1f24 60%, #111316);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 18px 30px rgba(0, 0, 0, 0.25);
+}
+.hh-antenna::before {
+  content: '';
+  position: absolute;
+  left: 34px;
+  top: 74px;
+  width: 70px;
+  height: 120px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.05), transparent);
+}
+.hh-antenna-mark {
+  position: absolute;
+  left: 140px;
+  top: 40px;
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: rgba(255, 255, 255, 0.14);
+  font-weight: 700;
+}
+/* RF going out of the antenna face, toward the bench. */
+.hh-waves {
+  position: absolute;
+  left: -10px;
+  top: 210px;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.hh-waves i {
+  position: absolute;
+  left: -40px;
+  top: -40px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 3px solid rgba(18, 99, 168, 0.6);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  transform: rotate(-45deg) scale(0.4);
+  animation: hh-wave 1.2s linear infinite;
+}
+.hh-waves i:nth-child(2) {
+  animation-delay: 0.4s;
+}
+.hh-waves i:nth-child(3) {
+  animation-delay: 0.8s;
+}
+@keyframes hh-wave {
+  to {
+    transform: rotate(-45deg) scale(4.2);
+    opacity: 0;
+  }
+}
+.hh-grip {
+  position: absolute;
+  left: 30px;
+  top: 470px;
+  width: 136px;
+  height: 410px;
+  transform: rotate(17deg);
+  transform-origin: top right;
+  border-radius: 40px 50px 46px 36px;
+  background: linear-gradient(90deg, #121417, #2a2f35 55%, #16191c);
+  box-shadow: 0 24px 34px rgba(0, 0, 0, 0.28);
+}
+.hh-grip::after {
+  content: '';
+  position: absolute;
+  left: 22px;
+  top: 130px;
+  width: 90px;
+  height: 210px;
+  border-radius: 20px;
+  background: repeating-linear-gradient(transparent 0 16px, rgba(255, 255, 255, 0.04) 16px 18px);
+}
+.hh-trigger {
+  position: absolute;
+  left: -36px;
+  top: 40px;
+  width: 54px;
+  height: 96px;
+  border-radius: 26px 8px 8px 30px;
+  border: 2px solid #3d444d;
+  background: linear-gradient(90deg, #2a2f36, #3b424b);
+  cursor: pointer;
+  touch-action: none;
+  transition: transform 0.08s, box-shadow 0.15s, border-color 0.15s;
+}
+.hh-trigger:hover {
+  border-color: rgba(245, 196, 0, 0.7);
+}
+.hh-trigger.held {
+  border-color: #f5c400;
+  transform: translateX(7px);
+  box-shadow: 0 0 0 6px rgba(245, 196, 0, 0.25), 0 0 26px rgba(245, 196, 0, 0.55);
+}
+.hh-body {
+  position: absolute;
+  left: 80px;
+  top: 90px;
+  width: 344px;
+  height: 830px;
+  border-radius: 36px 36px 42px 42px;
+  background: linear-gradient(100deg, #15181b, #2b3036 18%, #23272c 70%, #121417);
+  box-shadow: inset 0 0 0 2px #0b0d0f, inset 0 2px 0 rgba(255, 255, 255, 0.08), 0 30px 50px rgba(16, 24, 40, 0.35);
+}
+.hh-side-key {
+  position: absolute;
+  left: -6px;
+  top: 270px;
+  width: 9px;
+  height: 58px;
+  border: 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #8a9097, #c9ced3);
+  cursor: pointer;
+  touch-action: none;
+}
+.hh-side-key.right {
+  left: auto;
+  right: -6px;
+  top: 290px;
+  height: 44px;
+}
+.hh-led {
+  position: absolute;
+  left: 50%;
+  top: 20px;
+  width: 48px;
+  height: 7px;
+  margin-left: -24px;
+  border-radius: 4px;
+  background: #1d2a22;
+}
+.hh-led.reading {
+  background: #2bd47a;
+  box-shadow: 0 0 12px #2bd47a;
+  animation: hh-blink 0.18s steps(2) infinite;
+}
+.hh-led.busy {
+  background: #f5c400;
+  box-shadow: 0 0 10px #f5c400;
+}
+.hh-led.ok {
+  background: #2bd47a;
+  box-shadow: 0 0 12px #2bd47a;
+}
+.hh-led.bad {
+  background: #ff4b3e;
+  box-shadow: 0 0 12px #ff4b3e;
+}
+@keyframes hh-blink {
+  50% {
+    opacity: 0.45;
+  }
+}
+.hh-speaker {
+  position: absolute;
+  left: 50%;
+  top: 35px;
+  width: 64px;
+  height: 4px;
+  margin-left: -32px;
+  border-radius: 2px;
+  background: #0b0d0f;
+}
+.hh-screen {
+  position: absolute;
+  left: 22px;
+  top: 52px;
+  width: 300px;
+  height: 500px;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 0 0 7px #0b0d0f;
+  background: #000;
+}
+.hh-screen-inner {
+  width: 480px;
+  height: 800px;
+  transform: scale(0.625);
+  transform-origin: top left;
+}
+
+.hh-keypad {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  top: 572px;
+  bottom: 22px;
+  border-radius: 10px 10px 26px 26px;
+  background: linear-gradient(#3a4047, #2d3238);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  padding: 9px 12px;
+  display: grid;
+  gap: 5px;
+  align-content: start;
+}
+.hh-keypad .kr {
+  display: flex;
+  justify-content: space-between;
+  gap: 7px;
+}
+.hh-keypad .k {
+  flex: 1;
+  height: 20px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-family: var(--sans);
+  color: #e8ebee;
+  background: #4a5159;
+  box-shadow: 0 2px 0 #1f2327;
+}
+.hh-keypad .k.light {
+  background: #f4f6f8;
+  color: #13171c;
+  box-shadow: 0 2px 0 #9aa2ab;
+  font-size: 8.5px;
+}
+.hh-keypad .k.num {
+  height: 23px;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 3px;
+  padding: 3px 0 0 13px;
+  background: #f4f6f8;
+  color: #13171c;
+  box-shadow: 0 2px 0 #9aa2ab;
+  font-size: 13px;
+}
+.hh-keypad .k.num em {
+  font-style: normal;
+  color: #e07a10;
+  font-size: 8.5px;
+}
+.hh-keypad .k.sm {
+  flex: 0.9;
+}
+.hh-keypad .k.scan {
+  flex: 2.2;
+  height: 24px;
+  background: #f5c400;
+  box-shadow: 0 2px 0 #9c7d00;
+  color: #5a4800;
+  cursor: pointer;
+  touch-action: none;
+}
+.hh-keypad .k.scan.held {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 #9c7d00, 0 0 14px rgba(245, 196, 0, 0.7);
+}
+.hh-keypad .k.alpha {
+  flex: 0.9;
+  background: #e8901f;
+}
+.hh-keypad .k.func {
+  flex: 0.9;
+  background: #2f8fe0;
+}
+.hh-keypad .k.pwr {
+  flex: 0.6;
+  color: #ff5b4e;
+}
+
+/* ============================================================================
+   The app — Material 3, the APK's own colours (sampled from its screenshots)
+   ========================================================================== */
+
+.app {
+  --primary: #1565c0;
+  --on-surface: #1c1b1f;
+  --on-variant: #49454f;
+  --outline: #79747e;
+  --surface: #edf1f6;
+  --bg: #f4f6f9;
+  --dialog: #e6eff8;
+  --ok: #2e7d32;
+  --warn: #ef6c00;
+  --err: #c62828;
+  position: relative;
+  width: 480px;
+  height: 800px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--on-surface);
+  font-family: Roboto, 'Noto Sans', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.25;
+  text-align: left;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.app button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.app svg {
+  fill: currentColor;
+}
+
+.app .app-status {
+  height: 36px;
+  flex: none;
+  background: #757575;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.app .app-status .sb-ic {
+  width: 20px;
+  height: 20px;
+}
+
+.app .app-status .sb-ic.wide {
+  width: 24px;
+}
+
+.app .app-status .sb-gap {
+  flex: 1;
+}
+
+.app .app-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app .app-nav {
+  height: 72px;
+  flex: none;
+  background: #000;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.app .app-nav button {
+  width: 64px;
+  height: 56px;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  border-radius: 28px;
+}
+
+.app .app-nav button:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.app .app-nav svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: #c9c9c9;
+  stroke-width: 2;
+}
+
+.app .app-bar {
+  height: 72px;
+  flex: none;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px 0 24px;
+}
+
+.app .app-bar.with-back {
+  padding-left: 10px;
+}
+
+.app .app-bar h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.app .icon-btn {
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 24px;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.app .icon-btn:active {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.app .icon-btn svg {
+  width: 30px;
+  height: 30px;
+}
+
+.app .chips {
+  display: flex;
+  gap: 10px;
+  padding: 10px 18px 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: none;
+  cursor: pointer;
+}
+
+.app .chips::-webkit-scrollbar {
+  display: none;
+}
+
+.app .chip {
+  /* the site's own .chip is a mono tag with a border: none of that here */
+  display: block;
+  border: 0;
+  font-family: inherit;
+  white-space: nowrap;
+  flex: none;
+  padding: 8px 15px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--on-variant);
+  font-size: 15.5px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.app .chip.warn {
+  background: var(--warn);
+  color: #fff;
+}
+
+.app .chip.error {
+  background: #fdecec;
+  color: var(--err);
+}
+
+.app .summary {
+  flex: none;
+  margin: 8px 18px 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+.app .summary-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 17px;
+  color: var(--on-variant);
+  white-space: nowrap;
+}
+
+.app .summary-line .counts {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app .summary-line b {
+  font-size: 21px;
+  color: var(--on-surface);
+}
+
+.app .summary-line .st {
+  font-weight: 700;
+}
+
+.app .st.ok {
+  color: var(--ok);
+}
+
+.app .st.bad {
+  color: var(--err);
+}
+
+.app .st.sending {
+  color: var(--primary);
+}
+
+.app .m-btn {
+  height: 54px;
+  border-radius: 999px;
+  font-size: 18px !important;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 22px;
+  border: 0;
+}
+
+.app .m-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+.app .m-btn.filled {
+  background: var(--primary);
+  color: #fff !important;
+}
+
+.app .m-btn.filled.stop,
+.app .m-btn.filled.danger {
+  background: var(--err);
+}
+
+.app .m-btn.outlined {
+  background: transparent;
+  border: 1.5px solid var(--outline);
+  color: var(--primary) !important;
+}
+
+.app .m-btn:disabled {
+  background: #cdd5de;
+  color: #8a8e96 !important;
+  border-color: transparent;
+  cursor: default;
+}
+
+.app .m-btn.small {
+  height: 44px;
+  font-size: 16px !important;
+  padding: 0 16px;
+  flex: none;
+}
+
+.app .m-btn.wide {
+  width: 100%;
+}
+
+.app .summary > .m-btn {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.app .btn-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.app .fail-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 15.5px;
+  line-height: 1.3;
+}
+
+.app .fail-line > span {
+  flex: 1;
+}
+
+.app .fail-line .error {
+  color: var(--err);
+}
+
+.app .fail-line .info {
+  color: var(--primary);
+}
+
+.app .search-row {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 12px 6px 18px;
+}
+
+.app .search {
+  flex: 1;
+  height: 52px;
+  border-radius: 999px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+  color: var(--on-variant);
+}
+
+.app .search svg {
+  width: 26px;
+  height: 26px;
+  flex: none;
+}
+
+.app .search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 18px;
+  color: var(--on-surface);
+  outline: none;
+}
+
+.app .search input::placeholder {
+  color: var(--on-variant);
+  opacity: 1;
+}
+
+.app .menu {
+  position: absolute;
+  right: 0;
+  top: 54px;
+  z-index: 10;
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+  min-width: 240px;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+.app .menu button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 13px 20px;
+  font-size: 17px;
+}
+
+.app .menu button[aria-checked='true'] {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.app .menu button:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.app .tag-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+}
+
+.app .tag-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 64px;
+  padding: 9px 8px 9px 18px;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.app .tag-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.app .epc-line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.app .epc {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app .age {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ok);
+  letter-spacing: 0.5px;
+}
+
+.app .age.old {
+  color: var(--outline);
+}
+
+.app .meta-line {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--on-variant);
+}
+
+.app .q {
+  font-weight: 700;
+}
+
+.app .q.strong {
+  color: var(--ok);
+}
+
+.app .q.medium {
+  color: var(--warn);
+}
+
+.app .q.weak {
+  color: var(--err);
+}
+
+.app .empty {
+  padding: 0;
+  margin: 56px 0 0;
+  text-align: center;
+  font-size: 20px;
+  color: var(--on-variant);
+  letter-spacing: 0.2px;
+}
+
+/* dialogs */
+.app .app-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app .app-dialog {
+  --o-bg: var(--dialog);
+  width: 432px;
+  max-height: 700px;
+  overflow-y: auto;
+  border-radius: 28px;
+  background: var(--dialog);
+  padding: 28px 26px 22px;
+}
+
+.app .app-dialog.wide {
+  width: 448px;
+}
+
+.app .app-dialog h2 {
+  margin: 0 0 16px;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.app .app-dialog h2.light {
+  font-weight: 400;
+}
+
+.app .dlg-body {
+  margin: 0 0 6px;
+  font-size: 17px;
+  line-height: 1.4;
+  color: var(--on-variant);
+}
+
+.app .dlg-body.error {
+  color: var(--err);
+  margin-top: 10px;
+}
+
+.app .dlg-body .url-text {
+  font-family: 'Roboto Mono', var(--mono);
+  font-size: 15px;
+  word-break: break-all;
+}
+
+.app .dlg-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.app .text-btn {
+  border: 0;
+  background: transparent;
+  color: var(--primary) !important;
+  font-size: 17px !important;
+  font-weight: 500;
+  padding: 10px 6px;
+}
+
+.app .text-btn.danger {
+  color: var(--err) !important;
+}
+
+.app .field-cap {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--on-variant);
+}
+
+.app .new-epc {
+  margin: 4px 0 22px;
+  font-size: 20px;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.app .form-msg {
+  margin: 8px 4px 0;
+  font-size: 15px;
+}
+
+.app .form-msg.error {
+  color: var(--err);
+}
+
+.app .form-msg.info {
+  color: var(--primary);
+}
+
+/* outlined fields */
+.app .outlined-wrap {
+  margin-top: 14px;
+}
+
+.app .ofield {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 62px;
+  border: 1.5px solid var(--outline);
+  border-radius: 4px;
+}
+
+.app .ofield:focus-within {
+  border: 2px solid var(--primary);
+}
+
+.app .o-label {
+  position: absolute;
+  left: 12px;
+  top: -11px;
+  padding: 0 4px;
+  background: var(--o-bg, var(--surface));
+  font-size: 14.5px;
+  color: var(--on-variant);
+  letter-spacing: 0.3px;
+}
+
+.app .ofield:focus-within .o-label {
+  color: var(--primary);
+}
+
+.app .ofield input,
+.app .ofield select {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 19px;
+  color: var(--on-surface);
+  padding: 0 16px;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.app .ofield input[readonly] {
+  color: var(--on-surface);
+}
+
+.app .ofield.select::after {
+  content: '';
+  position: absolute;
+  right: 18px;
+  top: 27px;
+  border: 6px solid transparent;
+  border-top: 7px solid var(--on-variant);
+  pointer-events: none;
+}
+
+.app .o-help {
+  margin: 6px 16px 0;
+  font-size: 14px;
+  color: var(--on-variant);
+}
+
+/* settings */
+.app .settings {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scrollbar-width: thin;
+}
+
+.app .set-section {
+  --o-bg: var(--surface);
+  flex: none;
+  padding: 20px 18px;
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+.app .set-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--on-surface);
+}
+
+.app .set-ic {
+  display: grid;
+  color: var(--primary);
+}
+
+.app .set-ic svg {
+  width: 26px;
+  height: 26px;
+}
+
+.app .seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.app .seg .m-btn {
+  height: 48px;
+}
+
+.app .check {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  margin-top: 18px;
+  font-size: 17px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.app .check input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.app .check .box {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border: 2px solid var(--on-variant);
+  border-radius: 3px;
+}
+
+.app .check input:checked + .box {
+  border-color: var(--primary);
+  background: var(--primary)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z' fill='%23fff'/%3E%3C/svg%3E")
+    center / 20px no-repeat;
+}
+
+.app .check.disabled {
+  cursor: default;
+}
+
+.app .check.disabled input:checked + .box {
+  border-color: #9e9e9e;
+  background-color: #9e9e9e;
+}
+
+.app .set-help {
+  margin: 10px 0 0 42px;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--on-variant);
+  line-height: 1.35;
+}
+
+.app .set-value {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+.app .slider {
+  width: 100%;
+  accent-color: var(--primary);
+  height: 30px;
+}
+
+.app .toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.app .toggle-row > span {
+  flex: 1;
+}
+
+.app .switch {
+  flex: none;
+  position: relative;
+  width: 58px;
+  height: 34px;
+  border-radius: 17px;
+  border: 2px solid var(--outline);
+  background: #e0e3e8;
+  padding: 0;
+}
+
+.app .switch span {
+  position: absolute;
+  left: 6px;
+  top: 7px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--outline);
+  transition: all 0.15s;
+}
+
+.app .switch.on {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.app .switch.on span {
+  left: 26px;
+  top: 2px;
+  width: 26px;
+  height: 26px;
+  background: #fff;
+}
+
+.app .url-combo {
+  position: relative;
+}
+
+.app .combo-arrow {
+  position: absolute;
+  right: 6px;
+  top: 14px;
+  width: 44px;
+  height: 46px;
+  border: 0;
+  background: transparent;
+}
+
+.app .url-combo .ofield input {
+  padding-right: 48px;
+}
+
+.app .url-menu {
+  left: 0;
+  right: 0;
+  top: 78px;
+}
+
+.app .url-menu button {
+  font-size: 16px;
+  word-break: break-all;
+}
+
+.app .master-line {
+  margin: 10px 4px 0;
+  font-size: 14.5px;
+  color: var(--on-variant);
+}
+
+.app .master-line.ok {
+  color: var(--ok);
+  font-weight: 500;
+}
+
+.app .master-line.failed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app .master-line .error {
+  margin: 0;
+  color: var(--err);
+}
+
+.app .master-line .note {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.app .version {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--on-variant);
+}
+
+.app .save-bar {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--bg);
+  border-top: 1px solid #e3e6ea;
+}
+
+.app .save-bar .m-btn {
+  height: 50px;
+}
+
+/* riwayat log */
+.app .app-dialog.log {
+  display: flex;
+  flex-direction: column;
+  max-height: 690px;
+  overflow: hidden;
+}
+
+.app .log-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.app .log-entry {
+  padding: 4px 0 14px;
+}
+
+.app .log-label {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.app .log-label .ok {
+  color: var(--ok);
+  margin-left: 8px;
+}
+
+.app .log-label .bad {
+  color: var(--err);
+  margin-left: 8px;
+}
+
+.app .log-time {
+  margin: 3px 0 0;
+  font-size: 15.5px;
+  font-weight: 500;
+}
+
+.app .log-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.app .log-detail {
+  margin: 8px 0 0;
+  font-size: 15px;
+}
+
+.app .log-detail dt {
+  font-weight: 700;
+  color: var(--on-variant);
+  margin-top: 8px;
+}
+
+.app .log-detail dd {
+  margin: 2px 0 0;
+  word-break: break-all;
+}
+
+.app .log-detail dd.mono {
+  font-family: 'Roboto Mono', var(--mono);
+  font-size: 13.5px;
+}
+
+.app .app-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: 400px;
+  padding: 12px 20px;
+  border-radius: 24px;
+  background: #3c3c3c;
+  color: #fff;
+  font-size: 16px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}

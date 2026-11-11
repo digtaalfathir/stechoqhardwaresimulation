@@ -1,16 +1,11 @@
 import type { AnySimulator } from '../simulators/registry';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useT, type Translate } from '../lib/i18n';
 import type { TransportResponse } from '../simulators/core/types';
 import { Icon } from './icon';
 import { CopyButton } from './copy-button';
 import { NutrunnerSimulator } from '../simulators/nutrunner/nutrunner';
 import { TagReader } from '../simulators/rfid/tag-reader';
-import {
-  REPLACEMENT_REMARKS,
-  RfidHandheldSimulator,
-  type ReplacementProblem,
-} from '../simulators/rfid/rfid-handheld';
 import { DigitalIoSimulator, type ChannelKind } from '../simulators/digital-io/digital-io';
 import { McPlcSimulator } from '../simulators/plc/mc-plc';
 
@@ -29,251 +24,19 @@ export function DevicePanel({ sim }: { sim: AnySimulator }) {
   return null;
 }
 
-// --- rfid handheld ---------------------------------------------------------
+// --- rfid gate reader ------------------------------------------------------
 
 /**
- * The tag list lives here rather than in the configuration form: edits take
- * effect on the next sweep with no Apply step, which is what you want when you
- * are adding and removing tags between scans.
+ * The gate reader's tag list lives here rather than in the configuration form:
+ * edits take effect on the next sweep with no Apply step. (The handheld has its
+ * own workspace — a device and a bench of tags — in components/handheld.)
  */
 function RfidTagPanel({ sim }: { sim: TagReader }) {
-  const handheld = sim instanceof RfidHandheldSimulator ? sim : null;
-  const replacing = handheld?.replacementActive() ?? false;
-
-  // The dropdowns belong to the host, so they are read as soon as the workspace
-  // opens — and again whenever the base URL changes, which applyConfig triggers.
-  useEffect(() => {
-    void handheld?.ensureMasterData();
-  }, [handheld]);
-
   return (
     <>
-      {handheld && <MasterDataNotice sim={handheld} />}
       <SendResult sim={sim} />
-      <TagList sim={sim} replacing={replacing} />
-      {handheld && <MasterDataDialog sim={handheld} />}
-      {handheld?.state.replacementOpen && <ReplacementDialog sim={handheld} />}
+      <TagList sim={sim} />
     </>
-  );
-}
-
-/**
- * A blocking dialog while the host lists are being read — and nothing more.
- * A failed read is informative, not fatal: you can still type values by hand,
- * so it becomes a notice beside the fields instead of a wall.
- */
-function MasterDataDialog({ sim }: { sim: RfidHandheldSimulator }) {
-  const t = useT();
-  const [dismissed, setDismissed] = useState(false);
-  const loading = sim.state.master === 'loading';
-
-  useEffect(() => {
-    if (loading) setDismissed(false);
-  }, [loading]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDismissed(true);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, []);
-
-  if (!loading || dismissed) return null;
-  const urls = sim.masterUrls();
-
-  return (
-    <div className="modal-backdrop" onMouseDown={() => setDismissed(true)}>
-      <div className="modal" role="dialog" aria-modal="true" aria-busy onMouseDown={(e) => e.stopPropagation()}>
-        <div className="panel-head">
-          <span className="panel-title">{t('master.title', 'Master Data')}</span>
-          <div className="spacer" />
-          <span className="status t-active">
-            <span className="dot" />
-            {t('master.loading', 'LOADING')}
-          </span>
-        </div>
-        <div className="modal-body">
-          <p className="modal-lede">
-            {t('master.lede', 'Reading the RR types and factories this host knows about.')}
-          </p>
-          <p className="send-target mono">GET {urls.rrTypes}</p>
-          <p className="send-target mono">GET {urls.factories}</p>
-        </div>
-        <div className="modal-foot">
-          <span className="spacer" />
-          <button type="button" className="btn" onClick={() => setDismissed(true)}>
-            {t('master.hide', 'Hide')}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Says the dropdowns are not the host's, without taking the workspace away. */
-function MasterDataNotice({ sim }: { sim: RfidHandheldSimulator }) {
-  const t = useT();
-  if (sim.state.master !== 'failed') return null;
-  return (
-    <p className="locked-note master-note">
-      <Icon name="broadcast" size={14} />
-      <span>
-        {t(
-          'master.note',
-          'The dropdowns could not be read from this host, so they fall back to built-in values. A replacement still needs a factory from the host, because it sends the factory id.',
-        )}
-        {sim.state.masterError ? ` — ${sim.state.masterError}` : ''}
-      </span>
-      <button type="button" className="btn btn-sm" onClick={() => void sim.ensureMasterData(true)}>
-        {t('master.retry', 'Retry')}
-      </button>
-    </p>
-  );
-}
-
-/**
- * Asks for the half of a replacement the scanner cannot know: which tag is being
- * retired, and why. Opened by the device when the trigger is pulled, so the form
- * cannot be skipped and the scan is already halted by the time it appears.
- */
-function ReplacementDialog({ sim }: { sim: RfidHandheldSimulator }) {
-  const t = useT();
-  const [oldTag, setOldTag] = useState('');
-  const [remark, setRemark] = useState(REPLACEMENT_REMARKS[0]);
-  const [failed, setFailed] = useState(false);
-  const firstField = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    firstField.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') sim.closeReplacement();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [sim]);
-
-  const newTag = sim.newTag();
-  const busy = sim.transmission.sending;
-  // The device decides what is missing, so the button and the device can never
-  // disagree about whether this form is ready.
-  const problem = sim.replacementProblem(oldTag, remark);
-  const ready = !problem && !busy;
-  const response = sim.transmission.lastResponse;
-
-  const PROBLEM_TEXT: Record<ReplacementProblem, string> = {
-    'no-old-tag': t('repl.problem.old', 'Enter the tag that is being replaced.'),
-    'no-new-tag': t('repl.problem.new', 'The tag list has no new tag — close this and scan one first.'),
-    'no-remark': t('repl.problem.remark', 'Pick a reason.'),
-    'no-factory': t('repl.problem.factory', 'Pick a Factory Code in the configuration.'),
-    'unknown-factory': t(
-      'repl.problem.factory.unknown',
-      'That factory is not in the host master data, so its id is unknown — pick one from the dropdown.',
-    ),
-  };
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!ready) return;
-    const ok = await sim.submitReplacement(oldTag, remark);
-    setFailed(!ok);
-  }
-
-  return (
-    <div className="modal-backdrop" onMouseDown={() => !busy && sim.closeReplacement()}>
-      <form
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="replacement-title"
-        onMouseDown={(e) => e.stopPropagation()}
-        onSubmit={submit}
-      >
-        <div className="panel-head">
-          <span className="panel-title" id="replacement-title">
-            {t('repl.title', 'Tag Replacement')}
-          </span>
-          <div className="spacer" />
-          <span className="chip">{t('repl.register', 'register mode')}</span>
-        </div>
-
-        <div className="modal-body">
-          <p className="modal-lede">
-            {t('repl.lede', 'The scanner stopped on this tag. Tell the backend which tag it replaces.')}
-          </p>
-
-          <div className="field">
-            <label>{t('repl.new', 'New tag (scanned)')}</label>
-            <input className="mono-input readonly-input" value={newTag} readOnly tabIndex={-1} />
-            <span className="hint">{t('repl.new.hint', 'Taken from the tag list — edit it there')}</span>
-          </div>
-
-          <div className="field">
-            <label htmlFor="repl-old">{t('repl.old', 'Old tag (replaced)')}</label>
-            <input
-              id="repl-old"
-              ref={firstField}
-              className="mono-input"
-              value={oldTag}
-              placeholder="E2806894000050367572D095"
-              autoComplete="off"
-              onChange={(e) => {
-                setOldTag(e.target.value);
-                setFailed(false);
-              }}
-            />
-            <span className="hint">{t('repl.old.hint', 'Typed by hand — the damaged tag cannot be read')}</span>
-          </div>
-
-          <div className="field">
-            <label>{t('repl.factory', 'Factory ID')}</label>
-            <input
-              className="mono-input readonly-input"
-              value={sim.selectedFactory() ? `${sim.factoryId()} — ${sim.selectedFactory()!.name}` : ''}
-              placeholder={t('repl.factory.empty', 'pick a Factory Code in the configuration')}
-              readOnly
-              tabIndex={-1}
-            />
-            <span className="hint">{t('repl.factory.hint', 'Looked up from the host master data')}</span>
-          </div>
-
-          <div className="field">
-            <label htmlFor="repl-remark">{t('repl.remark', 'Reason')}</label>
-            <select id="repl-remark" value={remark} onChange={(e) => setRemark(e.target.value)}>
-              {REPLACEMENT_REMARKS.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {failed && response && (
-            <p className="modal-error">
-              {response.error ?? `${response.status} ${response.statusText} — ${response.message}`}
-            </p>
-          )}
-          {problem && problem !== 'no-old-tag' && (
-            <p className="modal-hint">{PROBLEM_TEXT[problem]}</p>
-          )}
-        </div>
-
-        <div className="modal-foot">
-          <span className="muted mono modal-target">POST {sim.replaceUrl()}</span>
-          <button type="button" className="btn" onClick={() => sim.closeReplacement()} disabled={busy}>
-            {t('repl.cancel', 'Cancel')}
-          </button>
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={!ready}
-            title={problem ? PROBLEM_TEXT[problem] : undefined}
-          >
-            {busy ? t('repl.sending', 'Sending…') : t('repl.submit', 'Submit Replacement')}
-          </button>
-        </div>
-      </form>
-    </div>
   );
 }
 
@@ -296,7 +59,7 @@ function explainError(res: TransportResponse, t: Translate): string {
  * The answer to "did it go through?" — verdict first, then the status line, the
  * server's own message, and where it went.
  */
-function SendResult({ sim }: { sim: AnySimulator }) {
+export function SendResult({ sim }: { sim: AnySimulator }) {
   const t = useT();
   const { sending, lastResponse: res, lastUrl, lastAt } = sim.transmission;
 
@@ -374,7 +137,7 @@ function SendResult({ sim }: { sim: AnySimulator }) {
   );
 }
 
-function TagList({ sim, replacing }: { sim: TagReader; replacing?: boolean }) {
+function TagList({ sim }: { sim: TagReader }) {
   const t = useT();
   const tags = sim.tags();
   const coverage = sim.coverage();
@@ -382,8 +145,8 @@ function TagList({ sim, replacing }: { sim: TagReader; replacing?: boolean }) {
     <section className="panel span-2">
       <div className="panel-head">
         <span className="panel-title">{t('rfid.title', 'Tag List')}</span>
-        <span className={`chip${replacing && tags.length > 1 ? ' t-warn' : ''}`}>
-          {replacing ? `${tags.length} / 1` : tags.length} {t('unit.tags', 'tags')}
+        <span className="chip">
+          {tags.length} {t('unit.tags', 'tags')}
         </span>
         {coverage && coverage.total > 0 && (
           <span className={`chip${coverage.covered >= coverage.total ? ' t-ok' : ''}`}>
@@ -399,48 +162,22 @@ function TagList({ sim, replacing }: { sim: TagReader; replacing?: boolean }) {
       </div>
       <div className="panel-body">
         <div className="field">
-          <label htmlFor="rfid-tags">
-            {replacing
-              ? t('rfid.label.one', 'Scanned tag — the new tag that replaces the old one')
-              : t('rfid.label', 'Scanned tags — one EPC per line')}
-          </label>
-          {replacing ? (
-            // One tag, so one line: the control itself makes the rule obvious.
-            <input
-              id="rfid-tags"
-              className="mono-input"
-              spellCheck={false}
-              value={sim.state.tagsText}
-              placeholder={t('rfid.placeholder', 'E280689400004025A987A05A')}
-              onChange={(e) => sim.setTagsText(e.target.value.replace(/\n/g, ''))}
-            />
-          ) : (
-            <textarea
-              id="rfid-tags"
-              className="mono-input tag-input"
-              spellCheck={false}
-              value={sim.state.tagsText}
-              placeholder={t('rfid.placeholder', 'E280689400004025A987A05A')}
-              onChange={(e) => sim.setTagsText(e.target.value)}
-            />
-          )}
+          <label htmlFor="rfid-tags">{t('rfid.label', 'Scanned tags — one EPC per line')}</label>
+          <textarea
+            id="rfid-tags"
+            className="mono-input tag-input"
+            spellCheck={false}
+            value={sim.state.tagsText}
+            placeholder={t('rfid.placeholder', 'E280689400004025A987A05A')}
+            onChange={(e) => sim.setTagsText(e.target.value)}
+          />
         </div>
       </div>
       <p className="panel-note">
-        {replacing
-          ? t(
-              'rfid.note.replace',
-              'Pull the trigger and the scanner stops, then asks which tag this one replaces. The replacement is posted to the replace endpoint, not to the scan endpoint.',
-            )
-          : coverage
-          ? t(
-              'rfid.note.gate',
-              'The gate reports only what its antennas caught in each interval, so tags arrive spread over several sweeps and repeat while still in the field. Edits apply to the next sweep — no Apply Configuration needed.',
-            )
-          : t(
-              'rfid.note',
-              'Every sweep posts this whole list as the idHex array — one request per sweep, not one per tag. No Apply Configuration needed.',
-            )}
+        {t(
+          'rfid.note.gate',
+          'The gate reports only what its antennas caught in each interval, so tags arrive spread over several sweeps and repeat while still in the field. Edits apply to the next sweep — no Apply Configuration needed.',
+        )}
       </p>
     </section>
   );

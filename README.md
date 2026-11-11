@@ -44,6 +44,19 @@ timing. A failure on screen is a real one (rejected, unreachable, or CORS). Send
 `Simulator`, so any device reports its traffic the same way and the send-result panel works for all
 of them.
 
+The handheld is a **Zebra MC33-style device running a copy of the WMS RFID Suite app** (the APK's own
+screens, colours and wording, taken from its user manual). Tags lie on a bench beside it; the antenna's
+range follows the app's Power setting (0–300). **Holding the trigger** — the grip trigger, the yellow
+key, a side key or the space bar — reads every tag in range over and over, nearer tags more often and
+stronger; **releasing it** posts the unique tags once, as one batch, exactly as the APK does. Then the
+app's own behaviour: Kuat / Sedang / Lemah quality, BARU / LAMA, Scan Baru vs Lanjutkan, ✓ Terkirim or
+a one-line failure with Kirim Ulang (code 500 becomes the fixed "hubungi Tim WMS" line), the "Tag belum
+terkirim" question before unsent tags are dropped, the success / failure tones, Riwayat Log with its
+last 30 attempts and resend, and replacement mode stopping at the first tag. Settings live on the
+device's own Pengaturan screen. Barcode mode, the floating bubble, the update banner and CSV backup are
+not simulated. The device is in [src/components/handheld/](src/components/handheld/); the behaviour
+in [src/simulators/rfid/rfid-handheld.ts](src/simulators/rfid/rfid-handheld.ts).
+
 The handheld fills its **RR Type** and **Factory** dropdowns from the host itself — read once when the
 workspace opens and again whenever the base URL changes, since each host holds different master data.
 A scan sends the factory's `code`; a replacement sends its `id`, which is a different number only the
@@ -115,6 +128,7 @@ src/
 │   ├── registry.ts      The one place devices are registered
 │   └── engine.check.ts  npm run check
 ├── components/          Workspace, event stream, inspector, device panels, settings menu
+│   └── handheld/        The MC33 device, its tag bench and the WMS RFID Suite app
 ├── pages/               Home, explorer, workspace, docs, about
 ├── lib/                 Hash router, React binding, settings store, i18n
 └── styles.css

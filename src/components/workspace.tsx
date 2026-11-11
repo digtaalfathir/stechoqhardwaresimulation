@@ -5,10 +5,12 @@ import type { Config } from '../simulators/core/simulator';
 import type { ConfigField, DeviceStatus, SimEvent, Tone } from '../simulators/core/types';
 import { useSimulator } from '../lib/use-simulator';
 import { href } from '../lib/router';
-import { useT, type Translate } from '../lib/i18n';
+import { useT } from '../lib/i18n';
 import { Icon } from './icon';
 import { EventStream, PayloadInspector } from './event-stream';
 import { DevicePanel } from './device-panels';
+import { HandheldWorkspace } from './handheld/handheld-device';
+import { RfidHandheldSimulator } from '../simulators/rfid/rfid-handheld';
 
 const STATUS_TONE: Record<DeviceStatus, Tone> = {
   OFFLINE: 'neutral',
@@ -80,6 +82,12 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
         </a>
       </nav>
 
+      {sim instanceof RfidHandheldSimulator ? (
+        // The handheld is driven from the device itself: its settings, controls
+        // and results live on the screen, as on the real APK.
+        <HandheldWorkspace sim={sim} />
+      ) : (
+      <>
       <ConfigPanel key={sim.meta.id} sim={sim} />
 
       {offline && (
@@ -180,9 +188,11 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
       </div>
 
       <div className="ws-row">
-        <CommunicationLog events={sim.events} t={t} />
+        <CommunicationLog events={sim.events} />
       </div>
       </fieldset>
+      </>
+      )}
     </>
   );
 }
@@ -336,7 +346,8 @@ function Field({
 }
 
 /** Only the events that put something on the wire. */
-function CommunicationLog({ events, t }: { events: SimEvent[]; t: Translate }) {
+export function CommunicationLog({ events }: { events: SimEvent[] }) {
+  const t = useT();
   const frames = events.filter((e) => e.transport).slice(0, 40);
   return (
     <section className="panel">

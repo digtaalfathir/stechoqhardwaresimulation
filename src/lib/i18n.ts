@@ -255,10 +255,18 @@ const ID: Record<string, string> = {
   'unit.tags': 'tag',
 
   // --- device catalog copy -------------------------------------------------
-  'sim.rfid-handheld.tagline':
-    'Reader UHF genggam yang benar-benar mengirim satu batch pembacaan tag ke API warehouse Anda.',
+  'sim.rfid-handheld.tagline': 'Handheld Zebra MC33 dengan aplikasi WMS RFID Suite — tahan trigger, lepas untuk kirim.',
   'sim.rfid-handheld.description':
-    'Mensimulasikan reader RFID UHF genggam: sapuan sekali picu atau kontinu, masing-masing mengirim seluruh daftar tag dalam satu request ke endpoint yang Anda konfigurasi. Request-nya benar-benar dikirim, sehingga responsnya — status, pesan, dan waktu — memberi tahu apakah backend Anda menerimanya. Daftar tag bisa diubah langsung tanpa menerapkan ulang konfigurasi.',
+    'Handheld bergaya Zebra MC33 yang menjalankan salinan aplikasi WMS RFID Suite. Tahan trigger dan setiap tag dalam jangkauan antena terbaca, makin sering dan makin kuat makin dekat letaknya; lepas dan tag unik dikirim ke API warehouse Anda dalam satu request, sungguhan. Pengiriman gagal tetap di layar dengan Kirim Ulang, riwayat pengiriman bisa dikirim ulang dari Riwayat Log, dan mode penggantian berhenti di tag pertama lalu menanyakan tag mana yang diganti.',
+  'hh.range': 'Jangkauan antena',
+  'hh.inrange': 'dalam jangkauan',
+  'hh.outrange': 'luar jangkauan',
+  'hh.epc': 'EPC — tempel satu atau lebih',
+  'hh.add': 'Tambah',
+  'hh.random': 'Acak ×5',
+  'hh.clear': 'Kosongkan meja',
+  'hh.hint': 'Tahan trigger, tombol kuning, atau',
+  'hh.hint.b': 'untuk scan; lepas untuk kirim. Geser tag masuk dan keluar jangkauan.',
   'sim.nutrunner.tagline':
     'Pengencangan terkendali torsi yang dilaporkan sebagai telegram Open Protocol MID 0061 sungguhan.',
   'sim.nutrunner.description':
