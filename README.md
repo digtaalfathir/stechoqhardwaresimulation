@@ -166,7 +166,7 @@ src/
 │   ├── plc/             MC Protocol PLC (socket side: public/mc-plc.mjs)
 │   ├── registry.ts      The one place devices are registered
 │   └── engine.check.ts  npm run check
-├── components/          Workspace, event stream, inspector, send result, settings menu
+├── components/          Workspace, event stream, inspector, send result, device art, settings menu
 │   ├── handheld/        The MC33 device, its tag bench and the WMS RFID Suite app
 │   ├── gate/            The isometric 8-antenna gate and the forklift going through
 │   ├── nutrunner/       The tightening station, the torque curve and the MID 0061 decoder

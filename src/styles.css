@@ -140,7 +140,7 @@ pre,
 }
 
 /* Full-bleed: the app uses the whole viewport and only pads the edges. Reading
-   width is constrained per-block (.prose, .hero h1) rather than globally, so
+   width is constrained per-block (.prose, hero headings) rather than globally, so
    dashboards fill the screen while prose stays readable. */
 .container {
   width: 100%;
@@ -350,23 +350,6 @@ pre,
   color: var(--ink-3);
   border-top: 1px solid var(--line);
   padding-top: 9px;
-}
-
-.site-footer {
-  border-top: 1px solid var(--line);
-  background: var(--panel);
-  margin-top: 56px;
-  padding: 20px 0;
-  color: var(--ink-3);
-  font-size: 12.5px;
-}
-
-.site-footer .container {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
 }
 
 main {
@@ -643,312 +626,6 @@ main {
   color: var(--ink-2);
   font-size: 13.5px;
   max-width: 62ch;
-}
-
-/* ---------- home ---------- */
-
-.hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 720px);
-  gap: clamp(28px, 3vw, 56px);
-  align-items: center;
-  padding: clamp(4px, 0.8vw, 14px) 0 clamp(24px, 2.4vw, 40px);
-}
-
-/* Scales with the viewport now that the page is full-bleed, but stays within a
-   readable measure instead of running the headline across a whole 27" screen. */
-.hero h1 {
-  font-size: clamp(28px, 3.4vw, 58px);
-  max-width: 22ch;
-  letter-spacing: -0.03em;
-  margin-bottom: 14px;
-}
-
-.hero-lede {
-  font-size: clamp(15px, 1vw, 18px);
-  color: var(--ink-2);
-  max-width: 62ch;
-  margin-bottom: 22px;
-}
-
-.hero-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 22px;
-}
-
-.hero-facts {
-  display: flex;
-  gap: 22px;
-  flex-wrap: wrap;
-  border-top: 1px solid var(--line);
-  padding-top: 16px;
-  max-width: 720px;
-}
-
-.hero-facts div {
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
-
-.hero-facts b {
-  display: block;
-  font-family: var(--mono);
-  font-size: 17px;
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.steps {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  counter-reset: step;
-}
-
-.step {
-  padding: 14px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.step-index {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--accent);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-.step h3 {
-  font-size: 15px;
-  margin: 6px 0 5px;
-}
-
-.step p {
-  font-size: 13px;
-  color: var(--ink-2);
-}
-
-/* Three across on a wide monitor, two on a laptop, one on a phone — without a
-   media query per breakpoint. */
-.reasons {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr));
-}
-
-.reason {
-  display: flex;
-  gap: 12px;
-  padding: 14px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.reason .icon-slot {
-  color: var(--accent);
-  flex: none;
-  margin-top: 2px;
-}
-
-.reason h3 {
-  font-size: 14.5px;
-  margin-bottom: 4px;
-}
-
-.reason p {
-  font-size: 13px;
-  color: var(--ink-2);
-}
-
-.usecases {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.usecase {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  border-radius: var(--radius);
-  padding: 7px 11px;
-  font-size: 13px;
-  font-weight: 520;
-}
-
-.usecase span {
-  color: var(--ok);
-  font-family: var(--mono);
-  font-size: 11px;
-}
-
-/* ---------- planned devices ---------- */
-
-/* Dense on purpose: a planned device is a line of intent, so it never takes the
-   footprint of something you can actually open. */
-.planned-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
-  gap: 8px;
-}
-
-.planned-grid.after-cards {
-  margin-top: 8px;
-}
-
-.planned-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-width: 0;
-  padding: 9px 11px;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--panel-alt);
-}
-
-.planned-icon {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  flex: none;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  color: var(--ink-3);
-}
-
-.planned-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-
-.planned-text b {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ink-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Wraps rather than truncates: the tagline is the only thing that says what the
-   device will do. */
-.planned-text span {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--ink-3);
-  overflow-wrap: anywhere;
-}
-
-.planned-row .chip {
-  flex: none;
-  margin-top: 2px;
-}
-
-/* ---------- device cards ---------- */
-
-.cards {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  color: inherit;
-}
-
-a.card:hover {
-  text-decoration: none;
-  border-color: var(--line-strong);
-  background: var(--panel-alt);
-}
-
-.card-top {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.card-icon {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel-sunken);
-  color: var(--accent);
-  flex: none;
-}
-
-.card h3 {
-  font-size: 14.5px;
-}
-
-.card p {
-  font-size: 13px;
-  color: var(--ink-2);
-  flex: 1;
-}
-
-.card-foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  border-top: 1px solid var(--line);
-  padding-top: 9px;
-}
-
-.card-foot .go {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--link);
-  font-size: 12.5px;
-  font-weight: 560;
-}
-
-.card.locked {
-  background: var(--panel-alt);
-  border-style: dashed;
-}
-
-.card.locked .card-icon {
-  color: var(--ink-3);
-  background: var(--panel);
-}
-
-.card.locked h3 {
-  color: var(--ink-2);
-}
-
-.category-block {
-  margin-bottom: 28px;
-}
-
-.category-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.category-head h3 {
-  font-size: 15px;
 }
 
 /* ---------- workspace ---------- */
@@ -1917,21 +1594,9 @@ pre.code.inline {
   .ws-row.stream-inspect {
     grid-template-columns: minmax(0, 1fr);
   }
-  .cards,
-  .steps {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 900px) {
-  .hero {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 26px;
-    padding: 30px 0;
-  }
-  .hero h1 {
-    font-size: 32px;
-  }
   .masthead-inner {
     height: auto;
     padding: 10px 0;
@@ -1957,14 +1622,6 @@ pre.code.inline {
 @media (max-width: 640px) {
   .container {
     padding: 0 14px;
-  }
-  .cards,
-  .steps,
-  .reasons {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .hero h1 {
-    font-size: 27px;
   }
   .event-row {
     grid-template-columns: 60px minmax(0, 1fr) 18px;

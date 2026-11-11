@@ -8,6 +8,8 @@ import { ExplorerPage } from './pages/explorer';
 import { SimulatorPage } from './pages/simulator';
 import { DocsPage } from './pages/docs';
 import { AboutPage } from './pages/about';
+import { simulators } from './simulators/registry';
+import './pages/pages.css';
 
 const PRODUCT = 'Stechoq Hardware Simulation';
 
@@ -95,15 +97,41 @@ export function App() {
       </main>
 
       <footer className="site-footer">
-        <div className="container">
-          <span>
-            <strong style={{ color: 'var(--ink-2)' }}>{PRODUCT}</strong> —{' '}
-            {t(
-              'footer.tagline',
-              'virtual hardware laboratory for testing industrial device integrations without physical hardware.',
-            )}
-          </span>
-          <span className="mono" style={{ fontSize: 11.5 }}>
+        <div className="container footer-grid">
+          <div className="footer-brand">
+            <a className="brand" href={href('/')}>
+              <span className="brand-mark">
+                <Icon name="bolt" size={15} />
+              </span>
+              {PRODUCT}
+            </a>
+            <p>
+              {t(
+                'footer.tagline',
+                'virtual hardware laboratory for testing industrial device integrations without physical hardware.',
+              )}
+            </p>
+          </div>
+          <nav aria-label={t('nav.simulators', 'Simulators')}>
+            <h4>{t('nav.simulators', 'Simulators')}</h4>
+            {simulators.map((s) => (
+              <a key={s.meta.id} href={href(`/simulators/${s.meta.id}`)}>
+                {s.meta.name}
+              </a>
+            ))}
+          </nav>
+          <nav aria-label={t('footer.platform', 'Platform')}>
+            <h4>{t('footer.platform', 'Platform')}</h4>
+            {NAV.map((item) => (
+              <a key={item.path} href={href(item.path)}>
+                {item.label}
+              </a>
+            ))}
+          </nav>
+        </div>
+        <div className="container footer-bottom">
+          <span>© Stechoq</span>
+          <span className="mono">
             {t('footer.note', 'runs in your browser · REST requests go to the endpoint you configure')}
           </span>
         </div>
