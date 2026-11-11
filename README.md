@@ -44,6 +44,12 @@ timing. A failure on screen is a real one (rejected, unreachable, or CORS). Send
 `Simulator`, so any device reports its traffic the same way and the send-result panel works for all
 of them.
 
+Every workspace opens with a **guided tour** the first time it is visited in a browser: the page
+dims, each part is highlighted in turn with a card explaining what it does, Esc skips it, and the
+**Tour** button in the workspace header replays it. The steps live in
+[src/components/tour-steps.ts](src/components/tour-steps.ts); a step whose element is not on screen
+is left out.
+
 The handheld is a **Zebra MC33-style device running a copy of the WMS RFID Suite app** (the APK's own
 screens, colours and wording, taken from its user manual). Tags lie on a bench beside it; the antenna's
 range follows the app's Power setting (0–300). **Holding the trigger** — the grip trigger, the yellow

@@ -1633,3 +1633,117 @@ pre.code.inline {
     padding-left: 12px;
   }
 }
+
+/* ---------- product tour ---------- */
+
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+/* Catches clicks so the page stays still while it is being explained. */
+.tour-dim {
+  position: fixed;
+  inset: 0;
+}
+.tour-dim.solid {
+  background: rgba(6, 12, 20, 0.62);
+}
+.tour-spot {
+  position: fixed;
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 2px #7fe3b6,
+    0 0 0 9999px rgba(6, 12, 20, 0.62);
+  pointer-events: none;
+  transition:
+    top 0.25s ease,
+    left 0.25s ease,
+    width 0.25s ease,
+    height 0.25s ease;
+}
+.tour-card {
+  position: fixed;
+  width: min(360px, calc(100vw - 24px));
+  padding: 16px 16px 14px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(6, 12, 20, 0.35);
+  transition:
+    top 0.25s ease,
+    left 0.25s ease;
+}
+.tour-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.tour-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+:root[data-theme='dark'] .tour-count {
+  color: #7fe3b6;
+}
+.tour-skip {
+  font: inherit;
+  font-size: 12px;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.tour-skip:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+.tour-card h3 {
+  font-size: 15.5px;
+  margin-bottom: 6px;
+}
+.tour-card p {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.tour-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.tour-dots {
+  display: flex;
+  gap: 4px;
+  margin-right: auto;
+}
+.tour-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.tour-dots i.done {
+  background: var(--ink-3);
+}
+.tour-dots i.on {
+  width: 16px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.tour-btn {
+  gap: 5px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot,
+  .tour-card {
+    transition: none;
+  }
+}

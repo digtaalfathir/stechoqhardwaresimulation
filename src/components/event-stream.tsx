@@ -45,7 +45,7 @@ export function EventStream({ events, selectedSeq, onSelect, onClear }: StreamPr
   }
 
   return (
-    <section className="panel">
+    <section className="panel" data-tour="events">
       <div className="panel-head">
         <span className="panel-title">{t('es.title', 'Event Stream')}</span>
         <span className="chip">

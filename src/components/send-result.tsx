@@ -34,7 +34,7 @@ export function SendResult({ sim }: { sim: AnySimulator }) {
         : { tone: 'error', label: t('send.fail', 'FAILED') };
 
   return (
-    <section className="panel span-2">
+    <section className="panel span-2" data-tour="send">
       <div className="panel-head">
         <span className="panel-title">{t('send.title', 'Send Result')}</span>
         <div className="spacer" />

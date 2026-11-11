@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AnySimulator } from '../simulators/registry';
 import { simulators } from '../simulators/registry';
 import type { Config } from '../simulators/core/simulator';
@@ -8,6 +8,8 @@ import { href } from '../lib/router';
 import { useT } from '../lib/i18n';
 import { Icon } from './icon';
 import { EventStream, PayloadInspector } from './event-stream';
+import { Tour, markTourSeen, tourSeen } from './tour';
+import { tourSteps } from './tour-steps';
 import { HandheldWorkspace } from './handheld/handheld-device';
 import { RfidHandheldSimulator } from '../simulators/rfid/rfid-handheld';
 import { RfidReaderSimulator } from '../simulators/rfid/rfid-reader';
@@ -48,6 +50,18 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
   // below it is inert — a native disabled fieldset locks every control inside.
   const offline = sim.status === 'OFFLINE';
 
+  // The tour opens by itself the first time a device is opened in this browser.
+  const [touring, setTouring] = useState(false);
+  useEffect(() => {
+    if (tourSeen(sim.meta.id)) return;
+    const h = setTimeout(() => setTouring(true), 800);
+    return () => clearTimeout(h);
+  }, [sim]);
+  const closeTour = useCallback(() => {
+    markTourSeen(sim.meta.id);
+    setTouring(false);
+  }, [sim]);
+
   return (
     <>
       <header className="ws-head">
@@ -68,8 +82,17 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
             <span className="dot" />
             {sim.status}
           </span>
+          <button type="button" className="btn btn-sm tour-btn" onClick={() => setTouring(true)}>
+            <Icon name="help" size={14} /> {t('tour.replay', 'Tour')}
+          </button>
         </div>
       </header>
+      {touring && (
+        <Tour
+          steps={tourSteps(sim.meta.id, sim.meta.name, t)}
+          onClose={closeTour}
+        />
+      )}
 
       <nav className="device-switcher" aria-label={t('ws.switch', 'Switch device')}>
         {simulators.map((s) => (
@@ -121,7 +144,7 @@ export function Workspace({ sim }: { sim: AnySimulator }) {
 
       <fieldset className={`ws-locked${offline ? ' is-locked' : ''}`} disabled={offline}>
       <div className={`ws-row${rows.length ? ' controls-state' : ''}`}>
-        <section className="panel">
+        <section className="panel" data-tour="controls">
           <div className="panel-head">
             <span className="panel-title">{t('ws.controls', 'Device Controls')}</span>
             {!rows.length && (
@@ -221,7 +244,7 @@ export function ConfigPanel({ sim }: { sim: AnySimulator }) {
   const set = (key: string, value: string | boolean) => setForm((f) => ({ ...f, [key]: value }));
 
   return (
-    <section className="panel" style={{ marginBottom: 12 }}>
+    <section className="panel" style={{ marginBottom: 12 }} data-tour="config">
       <div className="panel-head">
         <span className="panel-title">{t('ws.config', 'Device Configuration')}</span>
         <div className="spacer" />
@@ -365,7 +388,7 @@ export function CommunicationLog({ events }: { events: SimEvent[] }) {
   const t = useT();
   const frames = events.filter((e) => e.transport).slice(0, 40);
   return (
-    <section className="panel">
+    <section className="panel" data-tour="comm">
       <div className="panel-head">
         <span className="panel-title">{t('ws.comm', 'Communication Log')}</span>
         <div className="spacer" />
