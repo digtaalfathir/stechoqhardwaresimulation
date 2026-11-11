@@ -3,3 +3,4 @@ dist
 .check
 *.local
 .DS_Store
+testing
