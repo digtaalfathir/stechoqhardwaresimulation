@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ANTENNA, BENCH, quality, type RfidHandheldSimulator } from '../../simulators/rfid/rfid-handheld';
+import { ANTENNA, BEAM, BENCH, quality, type RfidHandheldSimulator } from '../../simulators/rfid/rfid-handheld';
 import type { SimEvent } from '../../simulators/core/types';
 import { useSimulator } from '../../lib/use-simulator';
 import { useT } from '../../lib/i18n';
@@ -183,13 +183,6 @@ function Device({ sim }: { sim: RfidHandheldSimulator }) {
       <div className="hh-antenna">
         <span className="hh-antenna-mark">RFID</span>
       </div>
-      {st.scanning && (
-        <div className="hh-waves" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </div>
-      )}
       <div className="hh-body">
         <span className="hh-side-key left" />
         <span className="hh-side-key right" />
@@ -299,9 +292,7 @@ function Bench({ sim, scale }: { sim: RfidHandheldSimulator; scale: number }) {
         }}
         onPointerUp={() => (drag.current = null)}
       >
-        <svg className="hh-range" width={BENCH.width} height={BENCH.height} aria-hidden="true">
-          <circle cx={ANTENNA.x} cy={ANTENNA.y} r={range} className={st.scanning ? 'live' : ''} />
-        </svg>
+        <Beam range={range} live={st.scanning} />
         <span className="hh-range-label">
           {t('hh.range', 'Antenna range')} · Power {power}
           {st.powerPreview !== null && <em> · {t('hh.unsaved', 'not saved yet')}</em>}
@@ -339,7 +330,7 @@ function Bench({ sim, scale }: { sim: RfidHandheldSimulator; scale: number }) {
           );
         })}
       </div>
-      <div className="hh-tray" style={{ top: BENCH.height + 12, width: BENCH.width }}>
+      <div className="hh-tray" style={{ bottom: 12, width: BENCH.width }}>
         <div className="hh-add">
           <input
             className={`mono-input${error ? ' bad' : ''}`}
@@ -369,5 +360,30 @@ function Bench({ sim, scale }: { sim: RfidHandheldSimulator; scale: number }) {
         </p>
       </div>
     </div>
+  );
+}
+
+/**
+ * The antenna's reach, drawn like the WiFi symbol turned on its side: arcs
+ * fanning out to the right, the outermost one at the edge of the range. The
+ * fan is the beam the engine reads within, so what is drawn is what is read.
+ */
+function Beam({ range, live }: { range: number; live: boolean }) {
+  const { x, y } = ANTENNA;
+  const at = (r: number, a: number) => `${(x + r * Math.cos(a)).toFixed(1)} ${(y + r * Math.sin(a)).toFixed(1)}`;
+  const arc = (r: number) => `M ${at(r, -BEAM)} A ${r} ${r} 0 0 1 ${at(r, BEAM)}`;
+  const arcs = [1, 2, 3, 4].map((i) => (range * i) / 4);
+  return (
+    <svg className={`hh-range${live ? ' live' : ''}`} width={BENCH.width} height={BENCH.height} aria-hidden="true">
+      {range > 0 && (
+        <>
+          <path className="hh-beam" d={`M ${x} ${y} L ${at(range, -BEAM)} A ${range} ${range} 0 0 1 ${at(range, BEAM)} Z`} />
+          {arcs.map((r, i) => (
+            <path key={i} className="hh-arc" d={arc(r)} style={{ animationDelay: `${i * 0.14}s` }} />
+          ))}
+        </>
+      )}
+      <circle className="hh-origin" cx={x} cy={y} r={8} />
+    </svg>
   );
 }

@@ -41,12 +41,16 @@ export const LOG_MAX = 30;
 // (0-300, as on the Zebra). A tag inside the range is read while the trigger is
 // held, more often and stronger the closer it lies. Units are the bench's own
 // pixels, so the view can draw it 1:1. The device stands at the bench's left
-// edge with its antenna facing right, into the bench.
+// edge with its antenna facing right, into the bench. The antenna is
+// directional: it reads within a fan, not all around.
 
-export const BENCH = { width: 380, height: 640 };
-export const ANTENNA = { x: 0, y: 200 };
-/** Read range at full power (300). */
-export const MAX_RANGE = 330;
+export const BENCH = { width: 380, height: 700 };
+/** Halfway down the bench, so even the full-power fan fits on it. */
+export const ANTENNA = { x: 0, y: 340 };
+/** Read range at full power (300): right across the bench. */
+export const MAX_RANGE = BENCH.width;
+/** Half-angle of the antenna's beam, in radians (±50°). */
+export const BEAM = (50 * Math.PI) / 180;
 const TICK_MS = 100;
 
 export interface BenchTag {
@@ -149,12 +153,12 @@ interface HandheldState extends TagReaderState {
 
 // Four within reach at the default power (near, near, mid, edge), two outside it.
 const DEFAULT_BENCH: BenchTag[] = [
-  { epc: 'E280689400004025A987A05A', x: 100, y: 95 },
-  { epc: 'E280689400004025AD44841C', x: 135, y: 195 },
-  { epc: 'E28068940000502B56E4B56D', x: 90, y: 345 },
-  { epc: 'E28068940000402663B08D7A', x: 205, y: 265 },
-  { epc: 'E2806894000050367572D095', x: 300, y: 440 },
-  { epc: 'E28068940000502B56E5EEF0', x: 170, y: 560 },
+  { epc: 'E280689400004025A987A05A', x: 100, y: 235 },
+  { epc: 'E280689400004025AD44841C', x: 135, y: 335 },
+  { epc: 'E28068940000502B56E4B56D', x: 120, y: 460 },
+  { epc: 'E28068940000402663B08D7A', x: 235, y: 420 },
+  { epc: 'E2806894000050367572D095', x: 300, y: 580 },
+  { epc: 'E28068940000502B56E5EEF0', x: 170, y: 80 },
 ];
 
 /**
@@ -418,8 +422,10 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     return Math.hypot(t.x - ANTENNA.x, t.y - ANTENNA.y);
   }
 
+  /** Within reach and inside the beam: a tag beside or behind the antenna is not read. */
   inRange(t: BenchTag, power?: number): boolean {
-    return this.distance(t) <= this.range(power);
+    const angle = Math.atan2(t.y - ANTENNA.y, t.x - ANTENNA.x);
+    return Math.abs(angle) <= BEAM && this.distance(t) <= this.range(power);
   }
 
   /** The bench previews a Power value while it is dragged; null drops the preview. */
@@ -593,8 +599,8 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     const session = [...this.state.session];
     let fresh: string | null = null;
     for (const tag of this.state.bench) {
+      if (!this.inRange(tag)) continue;
       const f = this.distance(tag) / range;
-      if (f > 1) continue;
       if (Math.random() > 1 - 0.8 * f * f) continue;
       // A UHF reader answers a near tag a few hundred times a second.
       const reads = 1 + Math.floor(Math.random() * 30 * (1 - f));

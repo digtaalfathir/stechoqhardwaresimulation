@@ -68,16 +68,33 @@
   overflow: visible;
   pointer-events: none;
 }
-.hh-range circle {
-  fill: rgba(18, 99, 168, 0.06);
-  stroke: rgba(18, 99, 168, 0.45);
-  stroke-width: 2;
-  stroke-dasharray: 7 6;
-  transition: r 0.2s;
+.hh-beam {
+  fill: rgba(18, 99, 168, 0.05);
 }
-.hh-range circle.live {
-  fill: rgba(18, 99, 168, 0.12);
-  stroke: rgba(18, 99, 168, 0.75);
+.hh-arc {
+  fill: none;
+  stroke: rgba(18, 99, 168, 0.45);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+.hh-arc:last-of-type {
+  /* the edge of the range */
+  stroke: rgba(18, 99, 168, 0.6);
+}
+.hh-range.live .hh-arc {
+  animation: hh-arc 0.9s ease-in-out infinite;
+}
+@keyframes hh-arc {
+  0%,
+  100% {
+    stroke: rgba(18, 99, 168, 0.2);
+  }
+  45% {
+    stroke: rgba(18, 99, 168, 0.95);
+  }
+}
+.hh-origin {
+  fill: rgba(18, 99, 168, 0.85);
 }
 .hh-range-label {
   position: absolute;
@@ -255,7 +272,7 @@
 .hh-antenna {
   position: absolute;
   left: 196px;
-  top: 64px;
+  top: 200px;
   width: 250px;
   height: 278px;
   transform: rotate(10deg);
@@ -282,40 +299,6 @@
   letter-spacing: 0.3em;
   color: rgba(255, 255, 255, 0.14);
   font-weight: 700;
-}
-/* RF going out of the antenna face, toward the bench. */
-.hh-waves {
-  position: absolute;
-  left: 450px;
-  top: 200px;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
-.hh-waves i {
-  position: absolute;
-  left: -40px;
-  top: -40px;
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  border: 3px solid rgba(18, 99, 168, 0.6);
-  border-left-color: transparent;
-  border-top-color: transparent;
-  transform: rotate(-45deg) scale(0.4);
-  animation: hh-wave 1.2s linear infinite;
-}
-.hh-waves i:nth-child(2) {
-  animation-delay: 0.4s;
-}
-.hh-waves i:nth-child(3) {
-  animation-delay: 0.8s;
-}
-@keyframes hh-wave {
-  to {
-    transform: rotate(-45deg) scale(4.2);
-    opacity: 0;
-  }
 }
 .hh-body {
   position: absolute;
