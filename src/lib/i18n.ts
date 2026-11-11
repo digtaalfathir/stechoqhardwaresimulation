@@ -129,13 +129,14 @@ const ID: Record<string, string> = {
   'ws.comm.empty':
     'Belum ada lalu lintas. Aksi yang akan menjangkau backend muncul di sini beserta protokolnya.',
   'ws.comm.note':
-    'Request REST benar-benar dikirim ke endpoint yang Anda konfigurasi; telegram Open Protocol serta frame TCP, Modbus, dan MQTT hanya dibuat untuk diperiksa. Pilih event di atas untuk membaca frame lengkapnya.',
+    'Request REST benar-benar dikirim ke endpoint yang Anda konfigurasi, dan frame MC Protocol adalah byte asli yang dipertukarkan client Anda dengan bridge PLC; telegram Open Protocol serta frame TCP, Modbus, dan MQTT hanya dibuat untuk diperiksa. Pilih event di atas untuk membaca frame lengkapnya.',
   'ws.comm.time': 'Waktu',
   'ws.comm.protocol': 'Protokol',
   'ws.comm.direction': 'Arah',
   'ws.comm.frame': 'Frame',
   'ws.comm.result': 'Hasil',
   'ws.comm.generated': 'dibuat saja',
+  'ws.comm.live': 'langsung',
   'ws.comm.blocked': 'diblokir',
   'ws.unknown': 'Simulator tidak dikenal',
   'ws.unknown.body': 'bukan simulator yang aktif. Pilih salah satu berikut:',
@@ -265,6 +266,28 @@ const ID: Record<string, string> = {
   'sim.digital-io.tagline': 'Blok input / output diskret dengan sakelar per kanal dan event perubahan.',
   'sim.digital-io.description':
     'Mensimulasikan modul I/O diskret: ubah input atau output mana pun dan amati notifikasi perubahan yang diterima backend Anda. Model yang sama mencakup board ESP32, modul W5500, atau coupler Modbus TCP — yang berbeda hanya transport-nya. Pada REST perubahan benar-benar dikirim ke endpoint Anda dan responsnya ditampilkan; frame Modbus dan MQTT hanya dibuat, karena browser tidak bisa membuka socket tersebut.',
+  'sim.plc.tagline': 'Memori register PLC Mitsubishi yang dilayani lewat MC Protocol 3E — ubah register D secara langsung.',
+  'sim.plc.description':
+    'Mensimulasikan PLC Mitsubishi Q / iQ-R untuk program akuisisi data. Jalankan perintah satu baris yang ditampilkan workspace (hanya butuh Node) dan Anda mendapat PLC di localhost: arahkan program Anda ke alamat yang ditampilkan dan PLC menjawab batch read dan write MC Protocol 3E binary persis seperti CPU aslinya. Workspace ini mengubah memori register tersebut secara langsung dan menampilkan setiap request program Anda, byte demi byte. Register muncul sendiri begitu ada client yang membacanya. PLC juga bisa dibuat offline (koneksi ditolak) atau diam (tersambung tapi tidak pernah menjawab) untuk menguji penanganan reconnect dan timeout.',
+  'plc.title': 'Memori Register',
+  'plc.registers': 'register',
+  'plc.live': 'dilayani pada pembacaan berikutnya',
+  'plc.down': 'PLC belum berjalan di komputer ini.',
+  'plc.start': 'Jalankan perintah ini di terminal (butuh Node 18+). Halaman ini tersambung sendiri begitu PLC hidup — biarkan jendela terminalnya terbuka.',
+  'plc.start.alt': 'Node lebih lama, atau tanpa terminal yang mendukung perintah di atas? Unduh file-nya lalu jalankan',
+  'plc.download': 'Unduh mc-plc.mjs',
+  'plc.waiting': 'menunggu PLC…',
+  'plc.endpoint': 'Arahkan program akuisisi Anda ke',
+  'plc.endpoint.note': 'PLC ini khusus milik Anda dan port-nya tetap sama walau halaman dimuat ulang.',
+  'plc.addr': 'Register',
+  'plc.value': 'Nilai',
+  'plc.add': 'Tambah / Set',
+  'plc.empty': 'Belum ada register. Tambahkan di atas, atau langsung jalankan program Anda — setiap register yang dibacanya muncul di sini.',
+  'plc.reads': 'Dibaca client',
+  'plc.writes': 'Ditulis client',
+  'plc.remove': 'Hapus',
+  'plc.note':
+    'Nilai berupa word 16-bit bertanda, sama seperti yang dibaca node-mc_protocol. D dan R bernomor desimal, W heksadesimal. Perubahan disimpan saat Enter atau saat kolom kehilangan fokus, jadi client yang sedang polling tidak pernah membaca nilai yang setengah diketik.',
   'sim.rfid-reader.tagline':
     'Gate reader tetap yang mengirim batch tag secara parsial dan tumpang tindih pada tiap interval.',
   'sim.rfid-reader.description':
@@ -275,7 +298,6 @@ const ID: Record<string, string> = {
   'sim.industrial-camera.tagline': 'Trigger, eksposur, dan metadata citra.',
   'sim.vision-inspection.tagline': 'Inspeksi lolos / gagal dengan area cacat.',
   'sim.conveyor.tagline': 'Kecepatan sabuk, okupansi, dan kondisi berhenti.',
-  'sim.plc.tagline': 'Tabel tag, siklus scan, dan akses register.',
   'sim.sensor.tagline': 'Sinyal analog dengan derau, drift, dan alarm.',
   'sim.tester.tagline': 'Stasiun uji akhir lini beserta putusannya.',
   'sim.rest-device.tagline': 'Perangkat generik yang diekspos lewat HTTP.',

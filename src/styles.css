@@ -1076,7 +1076,8 @@ a.card:hover {
 
 .field input,
 .field select,
-.field textarea {
+.field textarea,
+.def-table input {
   height: 30px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
@@ -1097,7 +1098,8 @@ a.card:hover {
   line-height: 1.45;
 }
 
-.field .mono-input {
+.field .mono-input,
+.def-table .mono-input {
   font-family: var(--mono);
   font-size: 12.5px;
 }

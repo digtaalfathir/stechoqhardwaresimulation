@@ -14,7 +14,8 @@
     "prepreview": "node scripts/require-node.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check": "esbuild src/simulators/engine.check.ts --bundle --platform=node --format=esm --log-level=warning --outfile=.check/engine.check.mjs && node .check/engine.check.mjs"
+    "mc-plc": "node public/mc-plc.mjs",
+    "check": "esbuild src/simulators/engine.check.ts --bundle --platform=node --format=esm --log-level=warning --outfile=.check/engine.check.mjs && node .check/engine.check.mjs && node public/mc-plc.mjs --check"
   },
   "dependencies": {
     "react": "^18.3.1",

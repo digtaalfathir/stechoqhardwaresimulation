@@ -10,6 +10,7 @@ import type { MasterFetch } from './rfid/master-data';
 import { RfidReaderSimulator } from './rfid/rfid-reader';
 import { NutrunnerSimulator } from './nutrunner/nutrunner';
 import { DigitalIoSimulator } from './digital-io/digital-io';
+import { McPlcSimulator, parseRegister } from './plc/mc-plc';
 import { httpPost, randomEpc, withResponse } from './core/wire';
 import { MID_0061_FIELDS, NUL, describe, telegram, numField } from './nutrunner/open-protocol';
 import type { TransportResponse } from './core/types';
@@ -67,13 +68,13 @@ function offline(sim: RfidHandheldSimulator, fetchMaster: () => Promise<MasterFe
 
 async function main() {
   // --- registry contract ---
-  assert(simulators.length === 4, 'registry exposes the live devices');
+  assert(simulators.length === 5, 'registry exposes the live devices');
   assert(
-    simulators.map((s) => s.meta.id).join(',') === 'rfid-handheld,rfid-reader,nutrunner,digital-io',
-    'the live devices are the two readers, the nutrunner and the I/O block',
+    simulators.map((s) => s.meta.id).join(',') === 'rfid-handheld,rfid-reader,nutrunner,digital-io,plc',
+    'the live devices are the two readers, the nutrunner, the I/O block and the PLC',
   );
   assert(
-    !plannedSimulators.some((p) => p.id === 'digital-io'),
+    !plannedSimulators.some((p) => p.id === 'digital-io' || p.id === 'plc'),
     'a live device is no longer listed as planned',
   );
   assert(new Set(simulators.map((s) => s.meta.id)).size === simulators.length, 'simulator ids are unique');
@@ -823,6 +824,43 @@ async function main() {
   const parked = spinner.transmission.sent;
   await sleep(450);
   assert(spinner.transmission.sent === parked, 'clearTimers stops every device timer');
+
+  // --- plc: one session per browser, and it survives the session expiring ---
+  assert(parseRegister(' d 11 ') === 'D11' && parseRegister('w1a') === 'W1A' && parseRegister('M5') === null, 'register addresses parse');
+  let bridge = { session: 'B', mode: 'online', mcPort: 8213, mcHost: 'plc.example.test', clients: ['10.0.0.9:5000'],
+    registers: <Record<string, unknown>>{ D11: { value: 3, reads: 1, writes: 0, lastRead: null, lastWrite: null } },
+    seq: 1, log: [] as unknown[] };
+  const sessionAsks: unknown[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    if (init?.method === 'POST') {
+      sessionAsks.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify(bridge), { status: 201 });
+    }
+    return url.includes(`/sessions/${bridge.session}/`)
+      ? new Response(JSON.stringify(bridge))
+      : new Response('{"error":"session expired"}', { status: 404 });
+  }) as typeof fetch;
+  const pushed: { url: string; body: unknown }[] = [];
+  const plc = new McPlcSimulator();
+  plc.sender = async (url, body) => (pushed.push({ url, body }), accepted);
+  plc.applyConfig({});
+  await sleep(50);
+  assert(sessionAsks.length === 1 && plc.endpoint() === 'plc.example.test:8213', 'opening the workspace opens a session and shows its endpoint');
+  assert(plc.state.registers.D11?.value === 3 && plc.status === 'SIMULATING', 'the view adopts the session memory');
+  bridge = { ...bridge, seq: 2, log: [{ seq: 2, at: '', op: 'read', client: '10.0.0.9:5000', device: 'D11', count: 1, values: [3], end: 0, req: '50 00', res: 'D0 00' }] };
+  await sleep(600);
+  assert(plc.events.some((e) => e.name === 'MC_READ' && e.transport?.live), 'a client read becomes a live MC event');
+  plc.setRegister('D61', 70000);
+  const last = () => pushed[pushed.length - 1];
+  assert(plc.state.registers.D61.value === 4464 && JSON.stringify(last().body) === '{"D61":4464}', 'edits wrap to int16 and are pushed');
+  assert(last().url.endsWith('/sessions/B/registers'), 'edits go to this browser\'s own session');
+  bridge = { ...bridge, session: 'C', registers: {}, seq: 0, log: [] }; // B expired
+  await sleep(1300);
+  assert(JSON.stringify(sessionAsks[sessionAsks.length - 1]) === '{"port":8213}', 'a lost session asks for its old port back');
+  assert(JSON.stringify(last().body) === '{"D11":3,"D61":4464}', 'a new session gets the registers back');
+  plc.clearTimers();
+  globalThis.fetch = realFetch;
 
   // --- wire builders ---
   const frame = httpPost('http://example.test:8080/api/x?y=1', { a: 1 });

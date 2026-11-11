@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useT, type Translate } from '../lib/i18n';
 import type { TransportResponse } from '../simulators/core/types';
 import { Icon } from './icon';
+import { CopyButton } from './copy-button';
 import { NutrunnerSimulator } from '../simulators/nutrunner/nutrunner';
 import { TagReader } from '../simulators/rfid/tag-reader';
 import {
@@ -11,6 +12,7 @@ import {
   type ReplacementProblem,
 } from '../simulators/rfid/rfid-handheld';
 import { DigitalIoSimulator, type ChannelKind } from '../simulators/digital-io/digital-io';
+import { McPlcSimulator } from '../simulators/plc/mc-plc';
 
 /**
  * Device-specific panels.
@@ -23,6 +25,7 @@ export function DevicePanel({ sim }: { sim: AnySimulator }) {
   if (sim instanceof TagReader) return <RfidTagPanel sim={sim} />;
   if (sim instanceof NutrunnerSimulator) return <NutrunnerPanel sim={sim} />;
   if (sim instanceof DigitalIoSimulator) return <DigitalIoPanel sim={sim} />;
+  if (sim instanceof McPlcSimulator) return <PlcRegisterPanel sim={sim} />;
   return null;
 }
 
@@ -653,6 +656,211 @@ function ChannelBlock({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// --- plc (mc protocol) -----------------------------------------------------
+
+/**
+ * The register table is the PLC's memory as the client sees it. A value is
+ * committed on Enter or blur, never per keystroke: a client polling mid-typing
+ * would otherwise read 1, then 12, then 123 — three model changes that never
+ * happened.
+ */
+function PlcRegisterPanel({ sim }: { sim: McPlcSimulator }) {
+  const t = useT();
+  const [addr, setAddr] = useState('');
+  const [val, setVal] = useState('0');
+  const [error, setError] = useState<string | null>(null);
+  const keys = sim.registerKeys();
+  const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString() : '—');
+
+  const add = () => {
+    const err = sim.addRegister(addr, Number(val));
+    setError(err);
+    if (!err) setAddr('');
+  };
+
+  return (
+    <section className="panel span-2">
+      <div className="panel-head">
+        <span className="panel-title">{t('plc.title', 'Register Memory')}</span>
+        <span className="chip">
+          {keys.length} {t('plc.registers', 'registers')}
+        </span>
+        <div className="spacer" />
+        <span className="chip t-ok">{t('plc.live', 'served on the next read')}</span>
+      </div>
+
+      {sim.state.bridge === 'down' ? (
+        <PlcStart sim={sim} />
+      ) : (
+        sim.endpoint() && (
+          <div className="panel-body" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span className="muted" style={{ fontSize: 13 }}>
+              {t('plc.endpoint', 'Point your acquisition program at')}
+            </span>
+            <code className="mono" style={{ fontSize: 15, fontWeight: 600 }}>
+              {sim.endpoint()}
+            </code>
+            <CopyButton text={sim.endpoint()} />
+            <span className="muted" style={{ fontSize: 12 }}>
+              {t('plc.endpoint.note', 'This PLC is yours alone and keeps its port across reloads.')}
+            </span>
+          </div>
+        )
+      )}
+
+      <div className="panel-body">
+        <div className="fields">
+          <div className="field">
+            <label htmlFor="plc-addr">{t('plc.addr', 'Register')}</label>
+            <input
+              id="plc-addr"
+              className="mono-input"
+              placeholder="D11"
+              spellCheck={false}
+              value={addr}
+              onChange={(e) => setAddr(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && add()}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="plc-val">{t('plc.value', 'Value')}</label>
+            <input
+              id="plc-val"
+              className="mono-input"
+              type="number"
+              min={-32768}
+              max={65535}
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && add()}
+            />
+          </div>
+          <div className="field" style={{ justifyContent: 'flex-end' }}>
+            <button type="button" className="btn" onClick={add} disabled={!addr.trim()}>
+              <Icon name="bolt" size={13} />
+              {t('plc.add', 'Add / Set')}
+            </button>
+          </div>
+        </div>
+        {error && <p className="t-error" style={{ fontSize: 12.5, marginTop: 6 }}>{error}</p>}
+      </div>
+
+      {keys.length === 0 ? (
+        <p className="empty">
+          {t('plc.empty', 'No registers yet. Add one above, or just start your program — every register it reads appears here.')}
+        </p>
+      ) : (
+        <div className="scroll-x">
+          <table className="def-table" style={{ border: 0, margin: 0 }}>
+            <thead>
+              <tr>
+                <th style={{ width: 90 }}>{t('plc.addr', 'Register')}</th>
+                <th style={{ width: 150 }}>{t('plc.value', 'Value')}</th>
+                <th style={{ width: 80 }}>Hex</th>
+                <th>{t('plc.reads', 'Client reads')}</th>
+                <th>{t('plc.writes', 'Client writes')}</th>
+                <th style={{ width: 120 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {keys.map((k) => {
+                const r = sim.state.registers[k];
+                const commit = (text: string) => {
+                  const n = Number(text);
+                  if (text.trim() !== '' && Number.isFinite(n) && n !== r.value) sim.setRegister(k, n);
+                };
+                return (
+                  <tr key={k}>
+                    <td className="mono">{k}</td>
+                    <td>
+                      <input
+                        // Re-mounts when the value changes from outside (a client write).
+                        key={`${k}:${r.value}`}
+                        className="mono-input"
+                        type="number"
+                        aria-label={`${k} value`}
+                        defaultValue={r.value}
+                        onBlur={(e) => commit(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                        style={{ width: 120 }}
+                      />
+                    </td>
+                    <td className="mono muted">{(r.value & 0xffff).toString(16).toUpperCase().padStart(4, '0')}</td>
+                    <td className="mono">
+                      {r.reads}× <span className="muted">{time(r.lastRead)}</span>
+                    </td>
+                    <td className="mono">
+                      {r.writes}× <span className="muted">{time(r.lastWrite)}</span>
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button type="button" className="btn btn-sm" onClick={() => sim.setRegister(k, r.value + 1)} title={`${k} + 1`}>
+                        +1
+                      </button>{' '}
+                      <button type="button" className="btn btn-sm" onClick={() => sim.removeRegister(k)} title={t('plc.remove', 'Remove')}>
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="panel-note">
+        {t(
+          'plc.note',
+          'Values are signed 16-bit words, as node-mc_protocol reads them. D and R are numbered in decimal, W in hex. Edits are committed on Enter or when the field loses focus, so a client polling mid-typing never reads a half-typed value.',
+        )}
+      </p>
+    </section>
+  );
+}
+
+/**
+ * A page cannot start a program on the visitor's machine, so this is the one
+ * step left to them: a command that fetches the bridge from this very site and
+ * runs it. One string that works unchanged in bash, cmd and PowerShell.
+ */
+function PlcStart({ sim }: { sim: McPlcSimulator }) {
+  const t = useT();
+  const file = new URL('mc-plc.mjs', location.href.split('#')[0]).href;
+  const command = `node -e "fetch('${file}').then(r=>r.text()).then(t=>import('data:text/javascript,'+encodeURIComponent(t)))"`;
+  return (
+    <div className="panel-body">
+      <p style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, marginBottom: 6 }}>
+        <Icon name="plug" size={14} />
+        {t('plc.down', 'The PLC is not running on this computer yet.')}
+        <span className="chip">{t('plc.waiting', 'waiting for the PLC…')}</span>
+      </p>
+      <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
+        {t(
+          'plc.start',
+          'Run this in a terminal (needs Node 18+). This page connects by itself as soon as the PLC is up — leave that terminal window open.',
+        )}
+      </p>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
+        <code className="mono" style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', fontSize: 12.5, padding: '6px 8px', border: '1px solid var(--line-strong)', borderRadius: 'var(--radius)' }}>
+          {command}
+        </code>
+        <CopyButton text={command} />
+      </div>
+      <p className="muted" style={{ fontSize: 12.5 }}>
+        {t('plc.start.alt', 'Older Node, or a shell that will not take the line above? Download the file and run')}{' '}
+        <code>node mc-plc.mjs</code>{' '}
+        <a className="btn btn-sm" href={file} download="mc-plc.mjs">
+          {t('plc.download', 'Download mc-plc.mjs')}
+        </a>
+      </p>
+      {sim.cfg('bridgeUrl') !== 'http://localhost:8201' && (
+        <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+          {sim.cfg('bridgeUrl')} · {sim.state.bridgeError}
+        </p>
+      )}
     </div>
   );
 }

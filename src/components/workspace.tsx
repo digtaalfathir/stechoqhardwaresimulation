@@ -384,6 +384,8 @@ function CommunicationLog({ events, t }: { events: SimEvent[]; t: Translate }) {
                           {e.transport!.response.status || t('ws.comm.blocked', 'blocked')}
                         </span>
                       )
+                    ) : e.transport!.live ? (
+                      <span className="t-ok">{t('ws.comm.live', 'live')}</span>
                     ) : (
                       <span className="muted">{t('ws.comm.generated', 'generated')}</span>
                     )}
@@ -397,7 +399,7 @@ function CommunicationLog({ events, t }: { events: SimEvent[]; t: Translate }) {
       <p className="panel-note">
         {t(
           'ws.comm.note',
-          'REST requests are really sent to the endpoint you configured; Open Protocol telegrams and TCP, Modbus and MQTT frames are generated for inspection only. Select an event above to read the full frame.',
+          'REST requests are really sent to the endpoint you configured, and MC Protocol frames are the real bytes your client exchanged with the PLC bridge; Open Protocol telegrams and TCP, Modbus and MQTT frames are generated for inspection only. Select an event above to read the full frame.',
         )}
       </p>
     </section>

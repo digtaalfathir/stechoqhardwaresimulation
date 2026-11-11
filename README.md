@@ -36,6 +36,7 @@ are needed and deep links survive a hard refresh. There is no backend: the app i
 | RFID Reader (fixed gate)    | `rfid-reader`   | REST — really sent                   |
 | Nutrunner / Tightening Tool | `nutrunner`     | Open Protocol — telegrams generated  |
 | Digital I/O Controller      | `digital-io`    | REST — really sent · Modbus / MQTT — generated |
+| PLC (MC Protocol)           | `plc`           | MC Protocol 3E — really served, via local bridge |
 
 Everything that speaks REST — both RFID readers, and the I/O block when its transport is REST —
 **really sends** its payload to the configured endpoint and reports the response: status, message and
@@ -58,7 +59,33 @@ consumer's parser can be checked against them byte for byte. Telegram building a
 [src/simulators/nutrunner/open-protocol.ts](src/simulators/nutrunner/open-protocol.ts); `npm run check`
 asserts the declared length, every field offset and the torque x100 encoding.
 
-Devices still in the catalog but not implemented (Industrial Camera, PLC, REST API Device, TCP
+The PLC is the one device a browser cannot be on its own: an acquisition program *connects to* a
+PLC, and a page can neither accept a TCP connection nor start a program on the visitor's machine. So
+the socket half is [public/mc-plc.mjs](public/mc-plc.mjs) — one file, no dependencies, **served by
+the site itself** at `/mc-plc.mjs` — and the workspace shows the one command that fetches and runs it:
+
+```
+node -e "fetch('https://<site>/mc-plc.mjs').then(r=>r.text()).then(t=>import('data:text/javascript,'+encodeURIComponent(t)))"
+```
+
+It works the same in bash, cmd and PowerShell and needs only Node 18+ (anyone testing a Node
+acquisition program has it); a download button covers older Node. No server, no repo, no install.
+The workspace polls `http://localhost:8201` and connects by itself the moment the bridge is up.
+Chrome may ask once to allow the site to reach the local network.
+
+The bridge answers **MC Protocol 3E binary** batch word reads (`0401`) and writes (`1401`) for D, R
+and W, with Q and iQ-R sub-commands, exactly as the CPU would. Each browser tab gets its own PLC on
+its own port — the first is `localhost:8200` — and keeps it across reloads (`localStorage`). If the
+bridge restarts, the workspace asks for the same port again and puts its registers back. Registers
+appear as soon as the client reads them. *Zero & Restore* holds every register at 0 for a while — a
+jig change — and the Online / Silent / Offline modes make the PLC answer, accept but never answer
+(client timeouts), or refuse connections.
+
+Inside this repo, `npm run mc-plc` runs the same file. It can also be hosted once for everyone
+(`MC_PORTS`, `HTTP_PORT`, `PUBLIC_HOST`, `SESSION_IDLE_MIN`; build the site with
+`VITE_PLC_BRIDGE_URL` pointing at it, behind HTTPS) — not needed for the local setup above.
+
+Devices still in the catalog but not implemented (Industrial Camera, REST API Device, TCP
 Device) appear as planned rows in the explorer.
 
 ## Layout
@@ -70,6 +97,7 @@ src/
 │   ├── rfid/            RFID handheld + gate reader, master data
 │   ├── nutrunner/       Tightening tool
 │   ├── digital-io/      Discrete I/O controller
+│   ├── plc/             MC Protocol PLC (socket side: public/mc-plc.mjs)
 │   ├── registry.ts      The one place devices are registered
 │   └── engine.check.ts  npm run check
 ├── components/          Workspace, event stream, inspector, device panels, settings menu
