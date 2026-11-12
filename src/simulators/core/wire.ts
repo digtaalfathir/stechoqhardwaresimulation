@@ -36,6 +36,7 @@ export async function postJson(url: string, body: unknown, timeoutMs = 30000): P
       status: res.status,
       statusText: res.statusText,
       message: summarise(text),
+      body: parseJson(text),
       durationMs: Math.round(performance.now() - started),
     };
   } catch (err) {
@@ -49,6 +50,14 @@ export async function postJson(url: string, body: unknown, timeoutMs = 30000): P
     };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return text.trim() ? JSON.parse(text) : undefined;
+  } catch {
+    return undefined;
   }
 }
 

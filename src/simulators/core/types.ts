@@ -86,6 +86,8 @@ export interface TransportResponse {
   statusText: string;
   message: string;
   durationMs: number;
+  /** The response body parsed as JSON, when it was JSON. */
+  body?: unknown;
   /** Set instead of a status when the browser refused or the host was unreachable. */
   error?: string;
   /** Machine-readable cause, so the UI can localise the explanation. */

@@ -58,7 +58,13 @@ stronger; **releasing it** posts the unique tags once, as one batch, exactly as 
 app's own behaviour: Kuat / Sedang / Lemah quality, BARU / LAMA, Scan Baru vs Lanjutkan, ✓ Terkirim or
 a one-line failure with Kirim Ulang (code 500 becomes the fixed "hubungi Tim WMS" line), the "Tag belum
 terkirim" question before unsent tags are dropped, the success / failure tones, Riwayat Log with its
-last 30 attempts and resend, and replacement mode stopping at the first tag. Settings live on the
+last 30 attempts and resend, and replacement mode stopping at the first tag. Each tag is posted as
+`{ "idHex": "<EPC>", "rssi": "strong" | "medium" | "low" }` — the app's quality label, not dBm. In
+**WO mode** a successful send shows the server's judgement under the summary, as the APK does:
+`WO <number> (<type>) actual/planning · 10 Data Match, 5 RFID Not Registered, …`, read from
+`data.wo` and `data.tags[].note`, grouped by note in first-seen order and coloured green / red / blue /
+orange (Data Match / Not Registered / Duplicate / anything else); a failed send leaves it, Scan Baru
+clears it, and an answer without `data.tags` (register mode) shows nothing. Settings live on the
 device's own Pengaturan screen. Barcode mode, the floating bubble, the update banner and CSV backup are
 not simulated. The device is in [src/components/handheld/](src/components/handheld/); the behaviour
 in [src/simulators/rfid/rfid-handheld.ts](src/simulators/rfid/rfid-handheld.ts).

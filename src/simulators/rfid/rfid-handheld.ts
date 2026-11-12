@@ -88,6 +88,59 @@ export function quality(t: Pick<ReadTag, 'reads' | 'rssi'>): Quality {
   return 'medium';
 }
 
+/** The signal label the API takes in `idHex[].rssi` — not dBm. */
+export const RSSI_LABEL: Record<Quality, 'strong' | 'medium' | 'low'> = { strong: 'strong', medium: 'medium', weak: 'low' };
+
+/** One tag as posted: its EPC and the app's quality label. */
+export interface PostedTag {
+  idHex: string;
+  rssi: 'strong' | 'medium' | 'low';
+}
+
+/** Colour of a tag note in the WO line, checked top to bottom like the app. */
+export type NoteTone = 'match' | 'missing' | 'duplicate' | 'other';
+export function noteTone(note: string): NoteTone {
+  if (note.startsWith('Data Match')) return 'match';
+  if (note.includes('Not Registered')) return 'missing';
+  if (note.includes('Duplicate')) return 'duplicate';
+  return 'other';
+}
+
+/** The WO progress and per-tag verdicts a WO-mode send answers with. */
+export interface Judgement {
+  wo: { number: string | null; type: string; actual: number; planning: number } | null;
+  /** Notes grouped by exact text, in the order they first appear; '' = no note (shown as "Tidak Diketahui"). */
+  groups: { note: string; count: number; tone: NoteTone }[];
+}
+
+/**
+ * Reads `data.wo` and `data.tags` from a send's response. No `data.tags`
+ * (register mode, or an older server) means no line at all.
+ */
+export function judge(body: unknown): Judgement | null {
+  const data = (body as { data?: { wo?: Record<string, unknown> | null; tags?: unknown } } | null)?.data;
+  if (!data || !Array.isArray(data.tags)) return null;
+  const groups: Judgement['groups'] = [];
+  for (const tag of data.tags as { note?: unknown }[]) {
+    const note = typeof tag?.note === 'string' ? tag.note.trim() : '';
+    const g = groups.find((x) => x.note === note);
+    if (g) g.count++;
+    else groups.push({ note, count: 1, tone: noteTone(note) });
+  }
+  const wo = data.wo;
+  return {
+    wo: wo
+      ? {
+          number: typeof wo.wo_number === 'string' && wo.wo_number ? wo.wo_number : null,
+          type: String(wo.wo_type ?? ''),
+          actual: Number(wo.qty_actual ?? 0),
+          planning: Number(wo.qty_planning ?? 0),
+        }
+      : null,
+    groups,
+  };
+}
+
 export type SendStatus = 'idle' | 'sending' | 'sent' | 'failed';
 
 /** What the server (or the network) said when a send failed. */
@@ -139,6 +192,8 @@ interface HandheldState extends TagReaderState {
   lastScanAt: string | null;
   send: SendStatus;
   failure: SendFailure | null;
+  /** WO line under the summary: set by a successful WO send, cleared with the tags. */
+  judgement: Judgement | null;
   /** "Tag belum terkirim" is asked, and whether a trigger or the button asked it. */
   prompt: 'trigger' | 'button' | null;
   replacementOpen: boolean;
@@ -261,6 +316,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       lastScanAt: null,
       send: 'idle',
       failure: null,
+      judgement: null,
       prompt: null,
       replacementOpen: false,
       replacementTag: '',
@@ -591,7 +647,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
   }
 
   private clearSession() {
-    this.setState({ session: [], send: 'idle', failure: null });
+    this.setState({ session: [], send: 'idle', failure: null, judgement: null });
   }
 
   private beginScan(source: 'trigger' | 'button') {
@@ -678,8 +734,13 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
 
   // --- sending ------------------------------------------------------------------
 
+  /** The session's tags as the API takes them: EPC plus the quality label. */
+  postedTags(): PostedTag[] {
+    return this.state.session.map((t) => ({ idHex: t.epc, rssi: RSSI_LABEL[quality(t)] }));
+  }
+
   /** The exact body posted to the warehouse API. */
-  buildPayload(idHex: string[] = this.tags()) {
+  buildPayload(idHex: PostedTag[] = this.postedTags()) {
     return {
       rr_type: this.cfg('rr_type'),
       maker_name: this.cfg('maker_name'),
@@ -696,7 +757,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
 
   /** Posts the session's unique tags. Also Kirim Ulang and "Kirim dulu". */
   async send(): Promise<boolean> {
-    const idHex = this.tags();
+    const idHex = this.postedTags();
     if (!idHex.length || this.state.send === 'sending') return false;
     this.setState({ send: 'sending', failure: null });
     const payload = this.buildPayload(idHex);
@@ -708,7 +769,9 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       coalesce: false,
     });
     const failure = ok ? null : this.failureOf();
-    this.setState({ send: ok ? 'sent' : 'failed', failure });
+    // Only a successful send changes the WO line; a failed one leaves it as it was.
+    const judgement = ok ? judge(this.transmission.lastResponse?.body) : this.state.judgement;
+    this.setState({ send: ok ? 'sent' : 'failed', failure, judgement });
     this.record({ kind: 'rfid', ok, count: idHex.length, url, payload });
     return ok;
   }
@@ -824,7 +887,11 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
     return {
       rr_type: 'T1B',
       maker_name: 'check',
-      idHex: ['E280689400004025A987A05A', 'E280689400004025AD44841C', 'E28068940000502B56E4B56D'],
+      idHex: [
+        { idHex: 'E280689400004025A987A05A', rssi: 'strong' },
+        { idHex: 'E280689400004025AD44841C', rssi: 'strong' },
+        { idHex: 'E28068940000502B56E4B56D', rssi: 'medium' },
+      ],
       initial_year: '2027',
       reader_id: READER_ID,
       antenna: '1',

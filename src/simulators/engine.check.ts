@@ -5,7 +5,7 @@
  * envelopes and timer cleanup. Runs headless — the engine has no DOM deps.
  */
 import { simulators, getSimulator, plannedSimulators, CATEGORIES } from './registry';
-import { ANTENNA, BENCH, RfidHandheldSimulator, quality } from './rfid/rfid-handheld';
+import { ANTENNA, BENCH, RfidHandheldSimulator, judge, noteTone, quality } from './rfid/rfid-handheld';
 import type { MasterFetch } from './rfid/master-data';
 import { LOAD_SIZE, RfidReaderSimulator } from './rfid/rfid-reader';
 import { NutrunnerSimulator } from './nutrunner/nutrunner';
@@ -199,9 +199,14 @@ async function main() {
   const scan = rfid.events.find((e) => e.name === 'RFID_SENT')!;
   const body = scan.payload;
   assert(body === lastSentBody, 'the body handed to the transport is the payload itself');
+  const sentTags = body.idHex as { idHex: string; rssi: string }[];
   assert(
-    JSON.stringify([...(body.idHex as string[])].sort()) === JSON.stringify(['AAAA', 'BBBB']),
+    JSON.stringify(sentTags.map((t) => t.idHex).sort()) === JSON.stringify(['AAAA', 'BBBB']),
     'the batch carries each unique tag once',
+  );
+  assert(
+    sentTags.every((t) => JSON.stringify(Object.keys(t)) === '["idHex","rssi"]' && ['low', 'medium', 'strong'].includes(t.rssi)),
+    `idHex is a list of { idHex, rssi } with a quality label, not dBm (got ${JSON.stringify(sentTags)})`,
   );
   assert(body.reader_id === 'SIMULATOR-01', 'the reader id is fixed to SIMULATOR-01');
   assert(body.antenna === '3' && body.initial_year === '2027', 'configured fields reach the payload');
@@ -318,6 +323,55 @@ async function main() {
   const unsentTags = rfid.tags().join();
   assert(await rfid.send(), 'Kirim Ulang goes through once the server answers');
   assert(rfid.tags().join() === unsentTags && rfid.state.send === 'sent', 'the same tags were sent');
+
+  // WO mode: the server's judgement shows under the summary.
+  const woReply: TransportResponse = {
+    ...accepted,
+    status: 200,
+    body: {
+      status: true,
+      data: {
+        wo: { wo_number: 'WO.DEV-20261102-003', wo_type: 'devanning', qty_planning: 122, qty_actual: 162, items: [] },
+        tags: [
+          { note: 'Data Match' },
+          { note: 'RFID Not Registered' },
+          { note: 'Data Match, RFID In Stock' },
+          { note: 'Data Match' },
+          { note: 'Duplicate RFID Scanned' },
+          { note: 'Type Not Match' },
+          { note: null },
+        ],
+      },
+    },
+  };
+  assert(rfid.state.judgement === null, 'no WO line before a WO answer');
+  rfid.sender = async () => woReply;
+  await rfid.send();
+  const j = rfid.state.judgement!;
+  assert(j?.wo?.number === 'WO.DEV-20261102-003' && j.wo.type === 'devanning' && j.wo.actual === 162 && j.wo.planning === 122, 'WO number, type and qty are read');
+  assert(
+    j.groups.map((g) => `${g.count} ${g.note}:${g.tone}`).join(' | ') ===
+      '2 Data Match:match | 1 RFID Not Registered:missing | 1 Data Match, RFID In Stock:match | 1 Duplicate RFID Scanned:duplicate | 1 Type Not Match:other | 1 :other',
+    `notes group by exact text in first-seen order (got ${j.groups.map((g) => `${g.count} ${g.note}:${g.tone}`).join(' | ')})`,
+  );
+  rfid.sender = async () => rejected;
+  await rfid.send();
+  assert(rfid.state.judgement === j, 'a failed send leaves the WO line as it was');
+  rfid.sender = async () => accepted;
+  await rfid.send();
+  assert(rfid.state.judgement === null, 'an answer without data.tags (register mode) shows no line');
+  rfid.sender = async () => woReply;
+  await rfid.send();
+  rfid.continueScan();
+  assert(rfid.state.scanning && rfid.state.judgement !== null, 'Lanjutkan keeps the WO line while reading on');
+  rfid.stopButton();
+  await sleep(30);
+  rfid.newScan();
+  assert(rfid.state.judgement === null, 'Scan Baru clears the WO line');
+  rfid.stopButton();
+  await sleep(30);
+  assert(judge({ data: { tags: [{ note: 'X' }] } })?.wo === null, 'tags without wo still give a line, without the WO prefix');
+  assert(noteTone('Data Match, RFID Not Registered') === 'match', 'tones are checked top to bottom');
 
   // While a send is in flight the trigger is ignored until the result is in.
   let finish: (() => void) | null = null;

@@ -6,6 +6,7 @@ import {
   REPLACEMENT_REMARKS,
   quality,
   type Quality,
+  type Judgement,
   type ReadTag,
   type RfidHandheldSimulator,
   type SendFailure,
@@ -220,6 +221,7 @@ function ScanScreen({
           )}
           {st.send === 'failed' && st.session.length > 0 && <span className="st bad">✗ {clock(st.lastScanAt, lang)}</span>}
         </div>
+        {st.judgement && st.session.length > 0 && <WoLine j={st.judgement} s={s} />}
         {st.scanning ? (
           <button type="button" className="m-btn filled stop" onClick={() => sim.stopButton()}>
             <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" /></svg>
@@ -860,5 +862,31 @@ function LogDialog({ sim, s, onClose }: { sim: RfidHandheldSimulator; s: AppStri
         </Dialog>
       )}
     </div>
+  );
+}
+
+/**
+ * The WO-mode judgement under the summary, as the APK draws it:
+ * "WO <number> (<type>) actual/planning · 10 Data Match, 5 RFID Not Registered…",
+ * each verdict in its colour, two lines at most.
+ */
+function WoLine({ j, s }: { j: Judgement; s: AppStrings }) {
+  return (
+    <p className="wo-line">
+      {j.wo && (
+        <span className="wo-prefix">
+          WO {j.wo.number ?? '-'} ({j.wo.type}) {j.wo.actual}/{j.wo.planning}
+          {j.groups.length > 0 ? ' · ' : ''}
+        </span>
+      )}
+      {j.groups.map((g, i) => (
+        <span key={g.note}>
+          <b className={`note ${g.tone}`}>
+            {g.count} {g.note || s.unknownNote}
+          </b>
+          {i < j.groups.length - 1 ? ', ' : ''}
+        </span>
+      ))}
+    </p>
   );
 }

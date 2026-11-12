@@ -705,6 +705,33 @@
   color: var(--primary);
 }
 
+/* WO-mode judgement: neutral prefix, each verdict in its colour, two lines at most. */
+.app .wo-line {
+  margin: 6px 0 2px;
+  font-size: 14.5px;
+  line-height: 1.35;
+  color: var(--on-variant);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.app .wo-line .note {
+  font-weight: 600;
+}
+.app .wo-line .note.match {
+  color: #2e7d32;
+}
+.app .wo-line .note.missing {
+  color: #c62828;
+}
+.app .wo-line .note.duplicate {
+  color: #1565c0;
+}
+.app .wo-line .note.other {
+  color: #ef6c00;
+}
+
 .app .m-btn {
   height: 54px;
   border-radius: 999px;
