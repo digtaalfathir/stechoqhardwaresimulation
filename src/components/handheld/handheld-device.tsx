@@ -23,6 +23,7 @@ const BENCH_MAX = 2000;
  */
 export function HandheldWorkspace({ sim }: { sim: RfidHandheldSimulator }) {
   useSimulator(sim);
+  const t = useT();
   const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
   const selected: SimEvent | null = sim.events.find((e) => e.seq === selectedSeq) ?? sim.events[0] ?? null;
 
@@ -37,7 +38,16 @@ export function HandheldWorkspace({ sim }: { sim: RfidHandheldSimulator }) {
       <div className="hh-layout">
         <Stage sim={sim} />
         <div className="hh-side">
-          <SendResult sim={sim} />
+          <SendResult sim={sim}>
+            {sim.cfg('mode') === 'wo' && sim.state.send === 'sent' && !sim.state.judgement && (
+              <p className="send-hint">
+                {t(
+                  'hh.nojudgement',
+                  'No WO judgement in this answer: the server sent no data.tags, so the app shows no WO line. The server needs the API version that returns data.wo and data.tags.',
+                )}
+              </p>
+            )}
+          </SendResult>
           <EventStream
             events={sim.events}
             selectedSeq={selected?.seq ?? null}

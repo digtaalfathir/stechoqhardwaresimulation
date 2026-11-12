@@ -1747,3 +1747,29 @@ pre.code.inline {
     transition: none;
   }
 }
+
+/* ---------- send result: full response body, device hints ---------- */
+
+.send-body {
+  margin-top: 6px;
+}
+.send-body summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.send-body pre {
+  margin-top: 6px;
+  max-height: 260px;
+  overflow: auto;
+}
+.send-hint {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-left: 3px solid var(--warn);
+  background: var(--warn-bg);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}

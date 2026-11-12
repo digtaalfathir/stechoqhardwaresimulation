@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { AnySimulator } from '../simulators/registry';
 import { useT, type Translate } from '../lib/i18n';
 import type { TransportResponse } from '../simulators/core/types';
@@ -21,7 +22,7 @@ function explainError(res: TransportResponse, t: Translate): string {
  * The answer to "did it go through?" — verdict first, then the status line, the
  * server's own message, and where it went.
  */
-export function SendResult({ sim }: { sim: AnySimulator }) {
+export function SendResult({ sim, children }: { sim: AnySimulator; children?: ReactNode }) {
   const t = useT();
   const { sending, lastResponse: res, lastUrl, lastAt } = sim.transmission;
 
@@ -87,6 +88,13 @@ export function SendResult({ sim }: { sim: AnySimulator }) {
               {lastAt ? ` · ${lastAt.slice(11, 23)}Z` : ''}
             </p>
           )}
+          {res && !res.error && res.body !== undefined && (
+            <details className="send-body">
+              <summary>{t('send.body', 'Response body')}</summary>
+              <pre className="code inline">{JSON.stringify(res.body, null, 2)}</pre>
+            </details>
+          )}
+          {children}
         </div>
       </div>
       <p className="panel-note">

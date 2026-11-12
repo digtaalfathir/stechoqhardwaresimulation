@@ -194,7 +194,11 @@ export function httpGet(url: string): TransportFrame {
 export function withResponse(frame: TransportFrame, res: TransportResponse): TransportFrame {
   const body = res.error
     ? ['--- no response ---', res.error]
-    : [`HTTP/1.1 ${res.status} ${res.statusText}`.trim(), '', res.message || '(empty body)'];
+    : [
+        `HTTP/1.1 ${res.status} ${res.statusText}`.trim(),
+        '',
+        res.body !== undefined ? JSON.stringify(res.body, null, 2) : res.message || '(empty body)',
+      ];
   return {
     ...frame,
     live: true,

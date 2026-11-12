@@ -552,6 +552,8 @@ const ID: Record<string, string> = {
   'plc.bits': 'Bit device',
   'plc.bits.hint': 'klik bit untuk membaliknya · word = cara getWords membaca baris ini',
   'plc.note2': 'Word bertipe signed 16-bit, seperti yang dibaca node-mc_protocol; bit (M, L, B, X, Y, SM) satu per alamat dan dibaca sebagai word 16 sekaligus, alamat terendah di bit 0. D, R, M, dan L dihitung desimal; W, B, X, dan Y heksadesimal. Nilai disimpan saat Enter atau saat kolom kehilangan fokus, jadi client yang membaca di tengah ketikan tidak pernah mendapat nilai setengah jadi. Komentar tersimpan di browser ini.',
+  'send.body': 'Body respons',
+  'hh.nojudgement': 'Tidak ada penilaian WO di balasan ini: server tidak mengirim data.tags, jadi aplikasi tidak menampilkan baris WO. Server perlu versi API yang mengembalikan data.wo dan data.tags.',
 };
 
 const DICTS: Record<Lang, Record<string, string>> = { en: {}, id: ID };
