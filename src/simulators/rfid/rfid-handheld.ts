@@ -11,6 +11,10 @@ import {
 import { BASE_URLS, TagReader, type TagReaderState } from './tag-reader';
 
 export { BASE_URLS };
+
+/** Where a fresh handheld points, and the factory it picks when the host lists it. */
+export const DEFAULT_BASE_URL = 'https://product.suite.stechoq-j.com';
+export const DEFAULT_FACTORY = 'WR01';
 export type { Sender } from './tag-reader';
 
 /** Fixed by the device — this simulator always identifies itself as one reader. */
@@ -247,7 +251,7 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
       key: 'baseUrl',
       label: 'Base URL',
       type: 'combo',
-      default: BASE_URLS[0],
+      default: DEFAULT_BASE_URL,
       options: BASE_URLS,
       mono: true,
       hint: 'Pick one or type your own host',
@@ -425,14 +429,17 @@ export class RfidHandheldSimulator extends TagReader<HandheldState> {
   }
 
   /**
-   * A fresh device is usable at once: an empty RR Type or Factory Code takes
-   * the first value the host lists. A value already chosen is never touched.
+   * A fresh device is usable at once: an empty RR Type takes the first type
+   * the host lists, an empty Factory Code takes WR01 — or the first factory
+   * when the host has no WR01. A value already chosen is never touched.
    */
   private fillDefaults() {
     const rr = this.rrTypes();
     const factories = this.state.factories;
     if (!this.cfg('rr_type').trim() && rr.length) this.config.rr_type = rr[0];
-    if (!this.cfg('factory_code').trim() && factories.length) this.config.factory_code = factories[0].code;
+    if (!this.cfg('factory_code').trim() && factories.length) {
+      this.config.factory_code = (factories.find((f) => f.code === DEFAULT_FACTORY) ?? factories[0]).code;
+    }
   }
 
   masterUrls() {

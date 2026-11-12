@@ -431,6 +431,7 @@ async function main() {
   const facField = () => master.configFields.find((f) => f.key === 'factory_code')!;
 
   assert(master.cfg('maker_name') === 'Stechoq', 'Maker Name has a default');
+  assert(master.cfg('baseUrl') === 'https://product.suite.stechoq-j.com', 'a fresh handheld points at the product host');
   await master.ensureMasterData();
   assert(fetches.length === 1, 'opening the workspace reads the master data once');
   assert(master.cfg('rr_type') === 'T1B' && master.cfg('factory_code') === '5022', 'an empty RR Type and Factory Code take the first host values');
@@ -456,15 +457,24 @@ async function main() {
   assert(fetches.length === 1, 'applying an unrelated change does not refetch');
 
   // A different host holds different master data, so it is read again.
-  master.applyConfig({ baseUrl: 'https://product.suite.stechoq-j.com' });
+  master.applyConfig({ baseUrl: 'https://wms.suite.stechoq-j.com' });
   await sleep(10);
   assert(fetches.length === 2, 'changing the base URL reloads the lists');
-  assert(fetches[1] === 'https://product.suite.stechoq-j.com', 'and reads from the new host');
+  assert(fetches[1] === 'https://wms.suite.stechoq-j.com', 'and reads from the new host');
   await master.ensureMasterData(true);
   assert(fetches.length === 3, 'a retry forces a reload');
   master.applyConfig({ factory_code: '721B' });
   await master.ensureMasterData(true);
   assert(master.cfg('factory_code') === '721B', 'a value already picked is never replaced by the default');
+
+  // WR01 is the default factory wherever the host lists it, not just first.
+  const wr = new RfidHandheldSimulator();
+  wr.fetchMaster = async () => ({
+    ...MASTER,
+    data: { ...MASTER.data, factories: [...MASTER.data.factories, { id: 44, code: 'WR01', name: 'Warehouse RR' }] },
+  });
+  await wr.ensureMasterData();
+  assert(wr.cfg('factory_code') === 'WR01', `an empty Factory Code takes WR01 when the host has it (got ${wr.cfg('factory_code')})`);
 
   // A failed read keeps whatever is usable and says what happened.
   const broken = new RfidHandheldSimulator();
